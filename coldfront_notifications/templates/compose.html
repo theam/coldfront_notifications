@@ -1,0 +1,436 @@
+{% extends "common/base.html" %}
+{% load static %}
+
+{% block title %}New Notification | FAS Research Computing{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <h2>New Notification</h2>
+  <hr>
+</div>
+
+<link rel="stylesheet" href="{% static 'coldfront_notifications/css/compose.css' %}">
+
+<!-- ═══════════════════════════════════════
+     RECIPIENTS — full width top
+═══════════════════════════════════════ -->
+<div class="card mb-3">
+  <div class="card-header">
+    <div class="d-flex justify-content-between align-items-center">
+      <h3 class="h5 mb-0">
+        <a class="mr-2" data-toggle="collapse" href="#recipients-body" role="button">
+          <i class="fas fa-chevron-circle-down" id="expand_button"></i>
+        </a>
+        <i class="fas fa-users mr-1"></i> Recipients
+      </h3>
+      <span class="bcc-badge"><i class="fas fa-eye-slash"></i> All recipients will be BCC'd</span>
+    </div>
+  </div>
+  <div class="collapse show" id="recipients-body">
+    <div class="card-body">
+      <div class="recip-grid">
+
+        <div>
+          <label class="flbl">Project</label>
+          <select class="s2" id="f_project" multiple data-placeholder="Any project">
+            {% for p in projects %}
+            <option value="{{ p.pk }}">{{ p.title }}</option>
+            {% empty %}
+            <option value="1">astro-gpu-2025</option>
+            <option value="2">climate-hpc-q2</option>
+            <option value="3">bio-seq-pipeline</option>
+            <option value="4">ml-training-lab</option>
+            <option value="5">chem-sim-2024</option>
+            <option value="6">physics-lhc-data</option>
+            <option value="7">neuro-imaging-lab</option>
+            <option value="8">genomics-hpc-2025</option>
+            <option value="9">astrophysics-cannon</option>
+            <option value="10">data-science-fellows</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="flbl">Allocation</label>
+          <select class="s2" id="f_allocation" multiple data-placeholder="Any allocation">
+            {% for a in allocations %}
+            <option value="{{ a.pk }}">{{ a.project.title }} — {{ a.get_parent_resource }}</option>
+            {% empty %}
+            <option value="101">AL-00101 — Cannon Cluster</option>
+            <option value="102">AL-00102 — Cannon Cluster</option>
+            <option value="103">AL-00103 — FASSE</option>
+            <option value="104">AL-00104 — Holyoke GPU</option>
+            <option value="105">AL-00105 — Cannon Cluster</option>
+            <option value="106">AL-00106 — OpenMind</option>
+            <option value="107">AL-00107 — FASSE</option>
+            <option value="108">AL-00108 — Holyoke GPU</option>
+            <option value="109">AL-00109 — Cannon Cluster</option>
+            <option value="110">AL-00110 — OpenMind</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="flbl">Department</label>
+          <select class="s2" id="f_dept" multiple data-placeholder="Any department">
+            {% for d in departments %}
+            <option value="{{ d }}">{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="flbl">Resource</label>
+          <select class="s2" id="f_resource" multiple data-placeholder="Any resource">
+            {% for r in resources %}
+            <option value="{{ r.pk }}">{{ r.name }}</option>
+            {% empty %}
+            <option value="1">Cannon Cluster</option>
+            <option value="2">FASSE</option>
+            <option value="3">Holyoke GPU</option>
+            <option value="4">OpenMind</option>
+            <option value="5">Odyssey (Legacy)</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="flbl">Allocation Status</label>
+          <select class="s2" id="f_status" multiple data-placeholder="Any status">
+            {% for s in statuses %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% empty %}
+            <option value="Active">Active</option>
+            <option value="Expiring Soon">Expiring Soon</option>
+            <option value="Expired">Expired</option>
+            <option value="New">New</option>
+            <option value="Pending">Pending</option>
+            <option value="Denied">Denied</option>
+            <option value="Archived">Archived</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="flbl">User Role</label>
+          <select class="s2" id="f_role" multiple data-placeholder="Any role">
+            {% for r in roles %}
+            <option value="{{ r }}">{{ r }}</option>
+            {% empty %}
+            <option value="PI">PI</option>
+            <option value="Manager">Manager</option>
+            <option value="User">User</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div style="text-align:center;">
+          <div class="recip-count-pill mb-1">
+            <div class="recip-count-num" id="recipNum">—</div>
+            <div class="recip-count-lbl" id="recipLbl">recipients</div>
+            <div style="font-size:.7rem;color:#6c757d;margin-top:4px;">
+              <span id="emailCount">—</span> emails<span id="multiBadge" style="display:none;"> · <span id="multiCount">0</span> multi</span>
+            </div>
+          </div>
+          <button type="button" class="btn btn-outline-secondary btn-sm btn-block mb-1" id="recalcBtn">
+            <i class="fas fa-check-double mr-1"></i>Validate
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm btn-block"
+                  id="previewRecipBtn" disabled>
+            <i class="fas fa-list mr-1"></i>Preview
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     TWO COLUMNS — templates | compose
+═══════════════════════════════════════ -->
+<div class="compose-layout">
+
+  <!-- LEFT: template list -->
+  <div class="tmpl-col">
+    <div class="card" style="margin-bottom:0;">
+      <div class="card-header" style="padding:9px 12px;">
+        <div class="d-flex justify-content-between align-items-center">
+          <span style="font-weight:600;font-size:.85rem;">Templates</span>
+          <a href="{% url 'notifications:template-create' %}"
+             style="font-size:.72rem;color:#A51C30;font-weight:600;text-decoration:none;">
+            <i class="fas fa-plus"></i>
+          </a>
+        </div>
+      </div>
+      <div class="tmpl-list">
+        {% for t in templates %}
+        <div class="tmpl-item {% if forloop.first %}active{% endif %}"
+             data-id="{{ t.pk }}"
+             data-slug="{{ t.slug }}">
+          <div class="tmpl-name">{{ t.name }}</div>
+          <div class="tmpl-slug">{{ t.slug }}</div>
+          <div class="tmpl-vars">
+            {% for v in t.variables %}
+            <span class="tmpl-var-sm">&#123;&#123;{{ v }}&#125;&#125;</span>
+            {% endfor %}
+          </div>
+        </div>
+        {% empty %}
+        <div style="padding:16px;font-size:.82rem;color:#6c757d;text-align:center;">
+          No templates yet.<br>
+          <a href="{% url 'notifications:template-create' %}">Create one →</a>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: compose -->
+  <div class="compose-col">
+    <form method="post" id="notifForm">
+      {% csrf_token %}
+      <input type="hidden" name="template_id" id="hidden_template_id">
+      <input type="hidden" name="recipient_count" id="hidden_recip_count" value="0">
+      <input type="hidden" name="filter_projects" id="h_projects">
+      <input type="hidden" name="filter_allocations" id="h_allocations">
+      <input type="hidden" name="filter_departments" id="h_depts">
+      <input type="hidden" name="filter_resources" id="h_resources">
+      <input type="hidden" name="filter_statuses" id="h_statuses">
+      <input type="hidden" name="filter_roles" id="h_roles">
+      <input type="hidden" name="dedupe_users" id="h_dedupe_users" value="[]">
+
+      <div class="card" style="margin-bottom:0;">
+        <div class="card-header">
+          <div class="d-flex justify-content-between align-items-center">
+            <h3 class="h5 mb-0">
+              <i class="fas fa-edit mr-1 text-muted"></i>Compose
+              <span id="active-slug" class="badge badge-secondary ml-1"
+                    style="font-family:monospace;font-size:.7rem;"></span>
+            </h3>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="previewBtn">
+              <i class="fas fa-eye mr-1"></i>Preview
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+
+          <div class="form-group">
+            <label class="flbl">Subject</label>
+            <input type="text" class="form-control" id="id_subject" name="subject">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group col-md-5">
+              <label class="flbl">From</label>
+              <select class="form-control" id="id_sender" name="sender">
+                {% for s in senders %}
+                <option value="{{ s.email }}" {% if s.is_default %}selected{% endif %}>
+                  {{ s.label }} &lt;{{ s.email }}&gt;
+                </option>
+                {% empty %}
+                <option value="">— No senders configured —</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group col-md-5">
+              <label class="flbl">Reply-To <small class="text-muted font-weight-normal">(generic)</small></label>
+              <select class="form-control" id="id_reply_to" name="reply_to">
+                {% for rt in reply_tos %}
+                <option value="{{ rt.email }}" {% if rt.is_reply_to %}selected{% endif %}>
+                  {{ rt.label }} &lt;{{ rt.email }}&gt;
+                </option>
+                {% empty %}
+                <option value="">— No reply-to configured —</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group mb-0">
+            <label class="flbl">
+              Body
+              <small class="text-muted font-weight-normal ml-1" style="font-size:.72rem;">
+                <i class="fas fa-hand-pointer mr-1"></i>click a variable to insert at cursor
+              </small>
+            </label>
+            <div class="vars-body-wrap">
+              <div class="vars-col">
+                <div class="vars-col-hdr">Variables</div>
+                <div class="vars-col-search">
+                  <input type="text" id="varSearch" placeholder="Search…">
+                </div>
+                <div class="vars-col-list" id="varsList"></div>
+              </div>
+              <div class="body-col-inner">
+                <textarea id="id_body" name="body"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group mt-3">
+            <label class="flbl">
+              Extra Recipients
+              <small class="text-muted font-weight-normal">(optional, always BCC'd)</small>
+            </label>
+            <textarea class="form-control" name="extra_recipients" rows="2"
+                      style="font-family:monospace;font-size:.8rem;"
+                      placeholder="One address per line"></textarea>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Send bar -->
+      <div class="card mt-3">
+        <div class="card-body" style="padding:14px 16px;">
+
+          <!-- Validation results / errors -->
+          <div id="validationPanel" style="display:none; margin-bottom:12px;">
+            <div id="validationOK" class="alert alert-success py-2" style="display:none;font-size:.84rem;"></div>
+            <div id="validationBad" class="alert alert-danger py-2"  style="display:none;font-size:.84rem;">
+              <strong id="validationBadTitle"></strong>
+              <ul id="validationErrors" style="margin:6px 0 0 20px;font-size:.78rem;max-height:140px;overflow-y:auto;"></ul>
+            </div>
+            <div id="multiWarn" class="alert alert-warning py-2" style="display:none;font-size:.84rem;">
+              <i class="fas fa-info-circle mr-1"></i>
+              <span id="multiWarnText"></span>
+              <button type="button" class="btn btn-sm btn-link p-0 ml-2" id="multiShowBtn">show list</button>
+              <ul id="multiList" style="display:none;margin:6px 0 0 20px;font-size:.78rem;"></ul>
+            </div>
+          </div>
+
+          <div class="send-warn" id="sendWarn" style="display:none;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <div>
+              <strong>You are about to send <span id="warnCount">0</span> emails via BCC.</strong><br>
+              <span class="text-muted" style="font-size:.79rem;">This action cannot be undone.</span>
+            </div>
+          </div>
+          <div class="d-flex justify-content-end align-items-center">
+            <button type="submit" class="btn btn-primary" id="sendBtn"
+                    name="action" value="send" disabled>
+              <i class="fas fa-paper-plane mr-1"></i>
+              Send <span id="sendCount">—</span> Emails
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </form>
+  </div>
+
+</div>
+
+<!-- MODAL: Email Preview -->
+<div class="modal fade" id="previewModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-eye mr-2"></i>Email Preview</h5>
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-between align-items-center mb-2" style="font-size:.82rem;">
+          <div>
+            <strong>Rendering for:</strong>
+            <select id="prev-recipient-picker" class="form-control form-control-sm d-inline-block ml-2"
+                    style="width:auto;min-width:280px;"></select>
+          </div>
+          <small class="text-muted" id="prev-scope-badge"></small>
+        </div>
+
+        <table class="table table-sm table-borderless mb-2" style="font-size:.82rem;">
+          <tr><td style="width:75px;font-weight:600;color:#6c757d;">From</td>     <td id="prev-from"></td></tr>
+          <tr><td style="font-weight:600;color:#6c757d;">Reply-To</td>            <td id="prev-replyto"></td></tr>
+          <tr><td style="font-weight:600;color:#6c757d;">To</td>                   <td id="prev-to"></td></tr>
+          <tr><td style="font-weight:600;color:#6c757d;">Subject</td>              <td id="prev-subject"></td></tr>
+        </table>
+        <div id="prev-error" class="alert alert-warning py-2" style="font-size:.78rem;display:none;"></div>
+        <hr class="my-2">
+        <pre style="background:#fffef8;border:1px solid #e2d9b8;border-radius:4px;padding:14px;font-size:.84rem;white-space:pre-wrap;max-height:320px;overflow-y:auto;" id="prev-body"></pre>
+      </div>
+      <div class="modal-footer">
+        <small class="text-muted mr-auto" id="prev-footer">—</small>
+        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Recipient Preview -->
+<div class="modal fade" id="recipModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-users mr-2"></i>Recipient Preview</h5>
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+      </div>
+      <div class="modal-body p-0">
+        <div class="px-3 py-2 d-flex justify-content-between align-items-center" style="background:#f8f9fa;border-bottom:1px solid #dee2e6;font-size:.78rem;color:#6c757d;">
+          <span>
+            <i class="fas fa-info-circle mr-1"></i>
+            Users with multiple emails show a <strong>dedupe</strong> checkbox — tick it to send them only their first email.
+          </span>
+        </div>
+        <table class="table table-sm mb-0">
+          <thead class="thead-light">
+            <tr>
+              <th style="width:40px;">Dedupe</th>
+              <th>Name</th><th>Email</th><th>Role</th><th>Project</th><th>Allocation</th>
+            </tr>
+          </thead>
+          <tbody id="dedupeAllRow" style="display:none;">
+            <tr style="background:#f8f9fa;">
+              <td style="text-align:center;">
+                <input type="checkbox" id="dedupeAllCb" title="Dedupe all">
+              </td>
+              <td colspan="5" style="font-size:.78rem;color:#6c757d;">
+                <strong>Dedupe all</strong> — send at most one email per user
+              </td>
+            </tr>
+          </tbody>
+          <tbody id="recipRows">
+            <tr><td colspan="6" class="text-center text-muted py-3">
+              <i class="fas fa-spinner fa-spin mr-1"></i>Loading…
+            </td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-footer d-flex justify-content-between align-items-center">
+        <small class="text-muted">
+          <span id="recipModalCount"></span>
+          <span class="badge badge-info ml-2" id="recipModalScope" style="display:none;"></span>
+        </small>
+        <div id="recipPagination" style="display:none;">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="recipPrevBtn" disabled>
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <span id="recipPageInfo" style="font-size:.78rem;margin:0 8px;"></span>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="recipNextBtn" disabled>
+            <i class="fas fa-chevron-right"></i>
+          </button>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block javascript %}
+<script>
+// Server-rendered data (needs Django context)
+var TEMPLATES = {{ templates_json|safe }};
+var VARIABLES = {{ variables_json|safe }};
+// Django URL endpoints for AJAX calls
+var URLS = {
+  previewRender:  '{% url "notifications:preview-render" %}',
+  filterOptions:  '{% url "notifications:filter-options" %}',
+  validate:       '{% url "notifications:validate" %}',
+  recipientCount: '{% url "notifications:recipient-count" %}'
+};
+</script>
+<script src="{% static 'coldfront_notifications/js/compose.js' %}"></script>
+{% endblock %}

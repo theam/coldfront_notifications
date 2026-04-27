@@ -1,0 +1,149 @@
+{% extends "common/base.html" %}
+{% load static %}
+
+{% block title %}{% if template %}Edit Template{% else %}New Template{% endif %} | FAS Research Computing{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <h2>
+    {% if template %}Edit Template: <small class="text-muted">{{ template.name }}</small>
+    {% else %}New Template{% endif %}
+  </h2>
+  <hr>
+</div>
+
+<link rel="stylesheet" href="{% static 'coldfront_notifications/css/template_form.css' %}">
+
+<form method="post" id="templateForm">
+  {% csrf_token %}
+  <div class="row">
+
+    <!-- Left: form fields -->
+    <div class="col-lg-8">
+      <div class="card mb-3">
+        <div class="card-header">
+          <h3 class="h5 mb-0">Template Content</h3>
+        </div>
+        <div class="card-body">
+
+          {% if form.errors %}
+          <div class="alert alert-danger">
+            {% for field, errors in form.errors.items %}
+              {% for error in errors %}<div>{{ error }}</div>{% endfor %}
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="form-row">
+            <div class="form-group col-md-7">
+              <label class="flbl">Display Name</label>
+              <input type="text" class="form-control" id="id_name" name="name"
+                     value="{{ form.name.value|default:'' }}"
+                     placeholder="e.g. Allocation Renewal Reminder">
+            </div>
+            <div class="form-group col-md-5">
+              <label class="flbl">
+                Slug
+                <small class="text-muted font-weight-normal">{% if not template %}(auto-generated){% endif %}</small>
+              </label>
+              <input type="text" class="form-control {% if template %}bg-light{% endif %}"
+                     id="id_slug" name="slug"
+                     value="{{ form.instance.slug|default:'' }}"
+                     style="font-family:monospace;font-size:.85rem;"
+                     {% if template %}readonly{% endif %}
+                     placeholder="allocation-renewal">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="flbl">Subject Line</label>
+            <input type="text" class="form-control" id="id_subject" name="subject"
+                   value="{{ form.subject.value|default:'' }}"
+                   placeholder="e.g. [FASRC] Your allocation expires on &#123;&#123;expiry_date&#125;&#125;">
+          </div>
+
+          <div class="form-group mb-0">
+            <label class="flbl">
+              Body
+              <small class="text-muted font-weight-normal ml-1" style="font-size:.72rem;">
+                <i class="fas fa-hand-pointer mr-1"></i>click a variable to insert at cursor
+              </small>
+            </label>
+            <div class="vars-body-wrap">
+              <div class="vars-col">
+                <div class="vars-col-hdr">Variables</div>
+                <div class="vars-col-search">
+                  <input type="text" id="varSearch" placeholder="Search…">
+                </div>
+                <div class="vars-col-list" id="varsList">
+                  <!-- populated by JS from ALL_VARS -->
+                </div>
+              </div>
+              <div class="body-col-inner">
+                <textarea id="id_body" name="body">{{ form.body.value|default:'' }}</textarea>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-save mr-1"></i>
+          {% if template %}Save Changes{% else %}Create Template{% endif %}
+        </button>
+      </div>
+    </div>
+
+    <!-- Right: variable reference (pulled live from the catalog) -->
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="h6 mb-0">Variable Reference</h5>
+          <a href="{% url 'notifications:variable-list' %}" style="font-size:.72rem;" title="Manage variables">
+            <i class="fas fa-external-link-alt"></i>
+          </a>
+        </div>
+        <div class="card-body p-0" style="max-height:400px;overflow-y:auto;">
+          <table class="table table-sm mb-0" style="font-size:.78rem;table-layout:fixed;word-break:break-word;" id="varRefTable">
+            <thead class="thead-light">
+              <tr><th style="width:45%;">Token</th><th style="width:18%;">Kind</th><th style="width:37%;">Example</th></tr>
+            </thead>
+            <tbody id="varRefBody">
+              <!-- populated by JS from VARIABLES -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {% if template %}
+      <div class="card border-danger">
+        <div class="card-header bg-danger text-white">
+          <h5 class="h6 mb-0">Danger Zone</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-2" style="font-size:.85rem;">
+            Delete this template. It will remain visible (crossed out) on past notifications.
+          </p>
+          <a href="{% url 'notifications:template-delete' template.pk %}"
+             class="btn btn-outline-danger btn-sm">
+            <i class="fas fa-trash mr-1"></i> Delete Template
+          </a>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+</form>
+{% endblock %}
+
+{% block javascript %}
+<script>
+// Server-rendered data (needs Django context)
+var ALL_VARS = {{ variables_json|safe }};
+var IS_EDIT = {% if template %}true{% else %}false{% endif %};
+</script>
+<script src="{% static 'coldfront_notifications/js/template_form.js' %}"></script>
+{% endblock %}

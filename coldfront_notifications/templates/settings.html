@@ -1,0 +1,69 @@
+{% extends "common/base.html" %}
+{% load static %}
+{% block title %}Notification Settings | FAS Research Computing{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <h2>Notification Settings</h2>
+  <hr>
+</div>
+
+<!-- Sender / Reply-To addresses -->
+<div class="card mb-3">
+  <div class="card-header">
+    <div class="d-flex justify-content-between align-items-center">
+      <h3 class="h5 mb-0"><i class="fas fa-envelope mr-1"></i> Sender &amp; Reply-To Addresses</h3>
+      <a href="{% url 'notifications:sender-create' %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-plus mr-1"></i> Add Address
+      </a>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <p class="px-3 pt-2 text-muted" style="font-size:.82rem;margin-bottom:0;">
+      All addresses appear in both the <strong>From</strong> and <strong>Reply-To</strong> dropdowns on the compose page.
+      Flag one as default for each.
+    </p>
+    <table class="table table-hover table-sm mb-0">
+      <thead class="thead-light">
+        <tr>
+          <th>Label</th>
+          <th>Email</th>
+          <th class="text-center">Default From</th>
+          <th class="text-center">Default Reply-To</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in senders %}
+        <tr>
+          <td><strong>{{ s.label }}</strong></td>
+          <td style="font-family:monospace;font-size:.82rem;">{{ s.email }}</td>
+          <td class="text-center">
+            {% if s.is_default %}<i class="fas fa-check text-success"></i>{% else %}—{% endif %}
+          </td>
+          <td class="text-center">
+            {% if s.is_reply_to %}<i class="fas fa-check text-success"></i>{% else %}—{% endif %}
+          </td>
+          <td class="text-right" style="white-space:nowrap;">
+            <a href="{% url 'notifications:sender-update' s.pk %}" class="btn btn-link btn-sm p-0 mr-2" title="Edit">
+              <i class="fas fa-edit"></i>
+            </a>
+            <form method="post" action="{% url 'notifications:sender-delete' s.pk %}"
+                  style="display:inline;"
+                  onsubmit="return confirm('Remove {{ s.email }}?');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-link btn-sm text-danger p-0" title="Delete">
+                <i class="fas fa-trash"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="text-center text-muted py-4">
+          No addresses configured. <a href="{% url 'notifications:sender-create' %}">Add one →</a>
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "common/base.html" %}
+{% load static %}
+{% block title %}{% if sender %}Edit Address{% else %}New Address{% endif %} | FAS Research Computing{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <h2>
+    {% if sender %}Edit Address: <small class="text-muted">{{ sender.email }}</small>
+    {% else %}New Sender Address{% endif %}
+  </h2>
+  <hr>
+</div>
+
+<div class="row">
+  <div class="col-lg-6">
+    <form method="post">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+      <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="form-group">
+            <label style="font-weight:600;font-size:.82rem;">Label</label>
+            {{ form.label }}
+            {% if form.label.errors %}<small class="text-danger">{{ form.label.errors|join:", " }}</small>{% endif %}
+          </div>
+          <div class="form-group">
+            <label style="font-weight:600;font-size:.82rem;">Email</label>
+            {{ form.email }}
+            {% if form.email.errors %}<small class="text-danger">{{ form.email.errors|join:", " }}</small>{% endif %}
+          </div>
+          <div class="form-check mb-2">
+            {{ form.is_default }}
+            <label class="form-check-label ml-1" for="id_is_default">
+              <strong>Default From</strong>
+              <small class="text-muted ml-2">Pre-selected in the From dropdown on compose.</small>
+            </label>
+          </div>
+          <div class="form-check">
+            {{ form.is_reply_to }}
+            <label class="form-check-label ml-1" for="id_is_reply_to">
+              <strong>Default Reply-To</strong>
+              <small class="text-muted ml-2">Pre-selected in the Reply-To dropdown on compose.</small>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-save mr-1"></i>
+          {% if sender %}Save Changes{% else %}Add Address{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coldfront-notifications"
+dynamic = ["version"]
+description = "ColdFront plugin: bulk email notifications with template variables, cascading filters, and per-recipient rendering"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+requires-python = ">=3.10"
+keywords = ["coldfront", "notifications", "hpc", "email", "bulk"]
+classifiers = [
+    "Framework :: Django",
+    "Framework :: Django :: 4.2",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Intended Audience :: System Administrators",
+    "Topic :: Communications :: Email",
+]
+dependencies = [
+    "Django>=4.2,<5",
+]
+
+[project.optional-dependencies]
+celery = ["celery>=5.3"]
+
+[project.urls]
+Repository = "https://github.com/theam/coldfront_notifications"
+Documentation = "https://github.com/theam/coldfront_notifications#readme"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["coldfront_notifications*"]
+
+[tool.setuptools.package-data]
+coldfront_notifications = [
+    "templates/**/*",
+    "static/**/*",
+    "fixtures/**/*",
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "coldfront_notifications.__version__" }

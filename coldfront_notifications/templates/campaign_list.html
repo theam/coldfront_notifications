@@ -1,0 +1,69 @@
+{% extends "common/base.html" %}
+{% load static %}
+{% block title %}Notifications | FAS Research Computing{% endblock %}
+{% block content %}
+<div class="row">
+  <div class="col-12">
+    <div class="d-flex justify-content-between align-items-center">
+      <h2>Notifications</h2>
+      <a href="{% url 'notifications:compose' %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-paper-plane mr-1"></i> New Notification
+      </a>
+    </div>
+    <hr>
+  </div>
+</div>
+<div class="card mb-3">
+  <div class="card-header">
+    <div class="d-flex justify-content-between align-items-center">
+      <h3 class="h5 mb-0">All Notifications</h3>
+      <div class="btn-group btn-group-sm">
+        <a href="?" class="btn {% if not status_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}">All</a>
+        <a href="?status=sent" class="btn {% if status_filter == 'sent' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Sent</a>
+        <a href="?status=partial" class="btn {% if status_filter == 'partial' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Partial</a>
+        <a href="?status=failed" class="btn {% if status_filter == 'failed' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Failed</a>
+      </div>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <table class="table table-hover table-sm mb-0" id="campaignsTable">
+      <thead class="thead-light">
+        <tr>
+          <th>#</th><th>Subject</th><th>Template</th>
+          <th class="text-right">Recipients</th><th class="text-right">Delivered</th>
+          <th class="text-right">Failed</th><th>Sent At</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in campaigns %}
+        <tr>
+          <td class="text-muted" style="font-family:monospace;">{{ c.pk|stringformat:"03d" }}</td>
+          <td><a href="{% url 'notifications:campaign-detail' c.pk %}">{{ c.subject }}</a></td>
+          <td><span class="badge badge-secondary" style="font-family:monospace;font-size:.7rem;">{{ c.template.slug|default:"—" }}</span></td>
+          <td class="text-right" style="font-family:monospace;">{{ c.recipient_count }}</td>
+          <td class="text-right text-success" style="font-family:monospace;">{{ c.delivered_count }}</td>
+          <td class="text-right {% if c.failed_count %}text-danger{% else %}text-muted{% endif %}" style="font-family:monospace;">{{ c.failed_count|default:"—" }}</td>
+          <td style="font-size:.8rem;">{{ c.sent_at|date:"Y-m-d H:i"|default:"—" }}</td>
+          <td>
+            {% if c.status == 'sent' %}<span class="badge badge-success">Sent</span>
+            {% elif c.status == 'sending' %}<span class="badge badge-primary">Sending…</span>
+            {% elif c.status == 'partial' %}<span class="badge badge-warning text-dark">Partial</span>
+            {% elif c.status == 'failed' %}<span class="badge badge-danger">Failed</span>
+            {% elif c.status == 'draft' %}<span class="badge badge-secondary">Draft</span>
+            {% else %}<span class="badge badge-secondary">{{ c.status }}</span>{% endif %}
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No notifications yet. <a href="{% url 'notifications:compose' %}">Send one →</a></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+{% block javascript %}
+<script>
+var DT_CONFIG = { tableId: 'campaignsTable', order: [[6, 'desc']], nonOrderableTargets: [7] };
+</script>
+<script src="{% static 'coldfront_notifications/js/datatables_init.js' %}"></script>
+{% endblock %}

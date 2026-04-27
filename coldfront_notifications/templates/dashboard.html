@@ -1,0 +1,137 @@
+{% extends "common/base.html" %}
+{% load static %}
+
+{% block title %}Notifications Dashboard | FAS Research Computing{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <h2>Notifications Dashboard</h2>
+  <hr>
+</div>
+
+<!-- Stat Cards -->
+<div class="row mb-4">
+  <div class="col-md-3">
+    <div class="card mb-3" style="border-top:3px solid #A51C30;">
+      <div class="card-body">
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6c757d;margin-bottom:6px;">Total Delivered</div>
+        <div style="font-size:2rem;font-weight:700;font-family:monospace;color:#212529;">{{ total_sent|default:"0" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card mb-3" style="border-top:3px solid #28a745;">
+      <div class="card-body">
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6c757d;margin-bottom:6px;">Sending Now</div>
+        <div style="font-size:2rem;font-weight:700;font-family:monospace;color:#28a745;">{{ sending_now|default:"0" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card mb-3" style="border-top:3px solid #ffc107;">
+      <div class="card-body">
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6c757d;margin-bottom:6px;">Failed (30d)</div>
+        <div style="font-size:2rem;font-weight:700;font-family:monospace;color:#e67e22;">{{ total_failed_30|default:"0" }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card mb-3" style="border-top:3px solid #17a2b8;">
+      <div class="card-body">
+        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6c757d;margin-bottom:6px;">Total Notifications</div>
+        <div style="font-size:2rem;font-weight:700;font-family:monospace;color:#212529;">{{ total_campaigns|default:"0" }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Notifications -->
+<div class="card mb-3">
+  <div class="card-header">
+    <div class="d-flex justify-content-between align-items-center">
+      <h3 class="h5 mb-0">
+        <a class="mr-2" data-toggle="collapse" href="#recent-campaigns" role="button">
+          <i class="fas fa-chevron-circle-down" id="expand_button"></i>
+        </a>
+        Recent Notifications
+      </h3>
+
+      <a href="{% url 'notifications:compose' %}" class="btn btn-primary btn-sm">
+        <i class="fas fa-paper-plane mr-1"></i> New Notification
+      </a>
+    </div>
+  </div>
+  <div class="collapse show" id="recent-campaigns">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-hover table-sm mb-0" id="campaignsTable">
+          <thead class="thead-light">
+            <tr>
+              <th>Subject</th>
+              <th>Template</th>
+              <th>Sent By</th>
+              <th class="text-right">Recipients</th>
+              <th>Sent At</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for campaign in recent_campaigns %}
+            <tr>
+              <td>
+                <a href="{% url 'notifications:campaign-detail' campaign.pk %}">
+                  {{ campaign.subject }}
+                </a>
+              </td>
+              <td>
+                <span class="badge badge-secondary"
+                      style="font-family:monospace;font-size:.7rem;">
+                  {{ campaign.template.slug|default:"—" }}
+                </span>
+              </td>
+              <td style="font-size:.8rem;font-family:monospace;">{{ campaign.sender }}</td>
+              <td class="text-right" style="font-family:monospace;">{{ campaign.recipient_count }}</td>
+              <td style="font-size:.8rem;">{{ campaign.sent_at|date:"Y-m-d H:i"|default:"—" }}</td>
+              <td>
+                {% if campaign.status == 'sent' %}
+                  <span class="badge badge-success">Sent</span>
+                {% elif campaign.status == 'sending' %}
+                  <span class="badge badge-primary">Sending…</span>
+                {% elif campaign.status == 'partial' %}
+                  <span class="badge badge-warning text-dark">Partial</span>
+                {% elif campaign.status == 'failed' %}
+                  <span class="badge badge-danger">Failed</span>
+                {% elif campaign.status == 'draft' %}
+                  <span class="badge badge-secondary">Draft</span>
+                {% else %}
+                  <span class="badge badge-secondary">{{ campaign.status }}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-4">
+                <i class="fas fa-inbox fa-2x d-block mb-2" style="opacity:.3;"></i>
+                No notifications sent yet.
+                <a href="{% url 'notifications:compose' %}">Send your first one →</a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card-footer text-right">
+
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block javascript %}
+<script>
+var DT_CONFIG = { tableId: 'campaignsTable', order: [[4, 'desc']], nonOrderableTargets: [5], paging: false, searching: false, info: false };
+</script>
+<script src="{% static 'coldfront_notifications/js/datatables_init.js' %}"></script>
+{% endblock %}

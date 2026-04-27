@@ -1,0 +1,193 @@
+{% extends "common/base.html" %}
+{% load static %}
+
+{% block title %}{% if variable %}Edit Variable{% else %}New Variable{% endif %} | FAS Research Computing{% endblock %}
+
+{% block content %}
+<div class="mb-3">
+  <h2>
+    {% if variable %}Edit Variable: <small class="text-muted"><code>{% templatetag openvariable %}{{ variable.key }}{% templatetag closevariable %}</code></small>
+    {% else %}New Template Variable{% endif %}
+  </h2>
+  <hr>
+</div>
+
+<link rel="stylesheet" href="{% static 'coldfront_notifications/css/variable_form.css' %}">
+
+<form method="post" id="variableForm">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+  <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+  {% endif %}
+
+  <div class="row">
+
+    <!-- Left column: form -->
+    <div class="col-lg-8">
+
+      <!-- Basic fields -->
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="h5 mb-0">Basics</h3></div>
+        <div class="card-body">
+          <div class="form-row">
+            <div class="form-group col-md-6">
+              <label class="flbl">
+                Key <span class="text-danger">*</span>
+                <small class="text-muted font-weight-normal">(used as <code>{% templatetag openvariable %}key{% templatetag closevariable %}</code> in templates)</small>
+              </label>
+              {{ form.key }}
+              {% if form.key.errors %}<small class="text-danger">{{ form.key.errors|join:", " }}</small>{% endif %}
+            </div>
+            <div class="form-group col-md-6">
+              <label class="flbl">Label <span class="text-danger">*</span></label>
+              {{ form.label }}
+              {% if form.label.errors %}<small class="text-danger">{{ form.label.errors|join:", " }}</small>{% endif %}
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="flbl">Description <small class="text-muted font-weight-normal">(optional hint shown on compose page)</small></label>
+            {{ form.description }}
+          </div>
+          <div class="form-group mb-0">
+            <label class="flbl">Example value <small class="text-muted font-weight-normal">(shown as placeholder / preview)</small></label>
+            {{ form.example }}
+          </div>
+        </div>
+      </div>
+
+      <!-- Source picker -->
+      <div class="card mb-3">
+        <div class="card-header"><h3 class="h5 mb-0">Where does the value come from?</h3></div>
+        <div class="card-body">
+
+          <div class="form-row mb-3">
+            <div class="col-md-6">
+              <label class="radio-card" id="card-manual">
+                <input type="radio" name="source" value="manual"
+                       {% if form.source.value == "manual" %}checked{% endif %}>
+                <strong>Manual</strong>
+                <div class="text-muted" style="font-size:.78rem;margin-top:3px;">
+                  Admin types the value when composing a notification. Same value for every recipient.
+                  <br>Good for: maintenance dates, URLs, one-off notes.
+                </div>
+              </label>
+            </div>
+            <div class="col-md-6">
+              <label class="radio-card" id="card-query">
+                <input type="radio" name="source" value="query"
+                       {% if form.source.value == "query" %}checked{% endif %}>
+                <strong>Query</strong>
+                <div class="text-muted" style="font-size:.78rem;margin-top:3px;">
+                  System auto-fills from Coldfront data per recipient.
+                  <br>Good for: PI name, project title, allocation end date, department.
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Query config -->
+          <div id="query-config" class="conditional">
+            <label class="flbl">Query source <span class="text-danger">*</span></label>
+            {{ form.resolver_key }}
+            {% if form.resolver_key.errors %}<small class="text-danger">{{ form.resolver_key.errors|join:", " }}</small>{% endif %}
+            <small class="text-muted" style="font-size:.75rem;">Pick what field the variable resolves to. Only whitelisted paths are allowed.</small>
+
+            <div class="example-box mt-3" id="query-example" style="display:none;">
+              <strong>What this will resolve to:</strong>
+              <div id="query-example-text" class="mt-1"></div>
+            </div>
+          </div>
+
+          <!-- Manual config -->
+          <div id="manual-config" class="conditional">
+            <div class="form-row">
+              <div class="form-group col-md-5">
+                <label class="flbl">Input type</label>
+                {{ form.input_widget }}
+                <small class="text-muted" style="font-size:.75rem;">Controls how the Value field below is rendered.</small>
+              </div>
+              <div class="form-group col-md-7">
+                <label class="flbl">Value <span class="text-danger">*</span></label>
+                {{ form.value }}
+                {% if form.value.errors %}<small class="text-danger">{{ form.value.errors|join:", " }}</small>{% endif %}
+                <small class="text-muted" style="font-size:.75rem;">Stored once. Every notification using this variable substitutes this exact value.</small>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Required flag -->
+      <div class="card mb-3">
+        <div class="card-body py-2">
+          <label class="mb-0" style="cursor:pointer;">
+            {{ form.is_required }}
+            <strong class="ml-1">Required</strong>
+            <span class="text-muted ml-2" style="font-size:.78rem;">
+              Block sending if this variable comes back empty (recommended).
+            </span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Footer buttons -->
+      <div class="d-flex justify-content-end">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-save mr-1"></i>
+          {% if variable %}Save Changes{% else %}Create Variable{% endif %}
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Right column: hint card -->
+    <div class="col-lg-4">
+      <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">Tips</h5></div>
+        <div class="card-body" style="font-size:.82rem;">
+          <p>
+            <strong>Key</strong> must be letters/digits/underscores. Use it in templates as
+            <code>{% templatetag openvariable %}key{% templatetag closevariable %}</code>.
+          </p>
+          <p>
+            <strong>Manual</strong> fields show up on the compose page as a form control.
+            Pick <em>Date</em>, <em>URL</em>, etc. to match the expected value.
+          </p>
+          <p class="mb-0">
+            <strong>Query</strong> choices are safe — they only read fields already visible
+            in Coldfront filters (Project, Allocation, Resource, PI, Department…).
+          </p>
+        </div>
+      </div>
+
+      {% if variable %}
+      <div class="card border-danger">
+        <div class="card-header bg-danger text-white">
+          <h5 class="h6 mb-0">Danger Zone</h5>
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-2" style="font-size:.82rem;">
+            Deleting <code>{% templatetag openvariable %}{{ variable.key }}{% templatetag closevariable %}</code> will cause templates that use it
+            to fail pre-flight validation.
+          </p>
+          <form method="post" action="{% url 'notifications:variable-delete' variable.pk %}"
+                onsubmit="return confirm('Delete this variable? This cannot be undone.');">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-outline-danger btn-sm">
+              <i class="fas fa-trash mr-1"></i> Delete Variable
+            </button>
+          </form>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+</form>
+{% endblock %}
+
+{% block javascript %}
+<script src="{% static 'coldfront_notifications/js/variable_form.js' %}"></script>
+{% endblock %}
