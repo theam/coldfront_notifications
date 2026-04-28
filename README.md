@@ -36,16 +36,16 @@ A [ColdFront](https://coldfront.readthedocs.io/) plugin for sending bulk email n
 
 ## Installation
 
-### From PyPI
+### From source (production)
 
 ```bash
-pip install coldfront-notifications
+pip install "git+https://github.com/theam/coldfront_notifications.git"
 ```
 
-With Celery support:
+To install from a specific branch:
 
 ```bash
-pip install coldfront-notifications[celery]
+pip install "git+https://github.com/theam/coldfront_notifications.git@<branch-name>"
 ```
 
 ### From source (development)
