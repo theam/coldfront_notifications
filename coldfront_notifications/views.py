@@ -1,8 +1,9 @@
 import json
 import logging
+from functools import wraps
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -10,6 +11,16 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from .forms import ComposeForm, NotificationTemplateForm, NotificationVariableForm, SenderConfigForm
+
+
+def staff_required(view_func):
+    """Restrict to authenticated staff/superusers."""
+    @wraps(view_func)
+    @login_required
+    @user_passes_test(lambda u: u.is_staff or u.is_superuser, login_url="/")
+    def wrapped(request, *args, **kwargs):
+        return view_func(request, *args, **kwargs)
+    return wrapped
 
 
 def _dispatch_send(campaign_pk: int):
@@ -70,6 +81,7 @@ def _get_filter_context():
     }
 
 
+@staff_required
 def dashboard(request):
     from datetime import timedelta
     thirty_days_ago = timezone.now() - timedelta(days=30)
@@ -90,6 +102,7 @@ def dashboard(request):
     })
 
 
+@staff_required
 def campaign_list(request):
     status_filter = request.GET.get("status", "")
     qs = NotificationCampaign.objects.select_related("template")
@@ -101,6 +114,7 @@ def campaign_list(request):
     })
 
 
+@staff_required
 def campaign_detail(request, pk):
     campaign = get_object_or_404(NotificationCampaign, pk=pk)
     logs = campaign.logs.all()
@@ -110,7 +124,7 @@ def campaign_detail(request, pk):
     })
 
 
-@login_required
+@staff_required
 def campaign_progress(request, pk):
     """Lightweight JSON endpoint for AJAX progress polling."""
     campaign = get_object_or_404(NotificationCampaign, pk=pk)
@@ -124,7 +138,7 @@ def campaign_progress(request, pk):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def resend_failed(request, pk):
     campaign = get_object_or_404(NotificationCampaign, pk=pk)
@@ -148,6 +162,7 @@ def resend_failed(request, pk):
     return redirect("notifications:campaign-detail", pk=pk)
 
 
+@staff_required
 def compose(request):
     templates = NotificationTemplate.objects.filter(is_deleted=False)
     ctx = _get_filter_context()
@@ -278,7 +293,7 @@ def compose(request):
     return render(request, "compose.html", ctx)
 
 
-@login_required
+@staff_required
 @require_POST
 def filter_options(request):
     """
@@ -359,7 +374,7 @@ def filter_options(request):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def recipient_count_view(request):
     filters = {
@@ -471,12 +486,14 @@ def recipient_count_view(request):
     })
 
 
+@staff_required
 def template_list(request):
     return render(request, "template_list.html", {
         "templates": NotificationTemplate.objects.filter(is_deleted=False),
     })
 
 
+@staff_required
 def template_form(request, pk=None):
     instance = get_object_or_404(NotificationTemplate, pk=pk) if pk else None
     if request.method == "POST":
@@ -510,7 +527,7 @@ def template_form(request, pk=None):
     })
 
 
-@login_required
+@staff_required
 def template_delete(request, pk):
     instance = get_object_or_404(NotificationTemplate, pk=pk)
     # Count notifications that used this template
@@ -526,14 +543,14 @@ def template_delete(request, pk):
     })
 
 
-@login_required
+@staff_required
 def variable_list(request):
     return render(request, "variable_list.html", {
         "variables": NotificationVariable.objects.filter(is_deleted=False),
     })
 
 
-@login_required
+@staff_required
 def variable_form(request, pk=None):
     instance = get_object_or_404(NotificationVariable, pk=pk) if pk else None
     if request.method == "POST":
@@ -555,7 +572,7 @@ def variable_form(request, pk=None):
     })
 
 
-@login_required
+@staff_required
 def variable_delete(request, pk):
     instance = get_object_or_404(NotificationVariable, pk=pk)
     # Find templates that reference this variable's key
@@ -574,13 +591,13 @@ def variable_delete(request, pk):
     })
 
 
-@login_required
+@staff_required
 def settings_view(request):
     senders = SenderConfig.objects.all()
     return render(request, "settings.html", {"senders": senders})
 
 
-@login_required
+@staff_required
 def sender_form(request, pk=None):
     instance = get_object_or_404(SenderConfig, pk=pk) if pk else None
     if request.method == "POST":
@@ -598,7 +615,7 @@ def sender_form(request, pk=None):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def sender_delete(request, pk):
     obj = get_object_or_404(SenderConfig, pk=pk)
@@ -608,7 +625,7 @@ def sender_delete(request, pk):
     return redirect("notifications:settings")
 
 
-@login_required
+@staff_required
 def template_json(request, pk):
     """Return a single template's live content for the compose-page sidebar."""
     t = get_object_or_404(NotificationTemplate, pk=pk)
@@ -622,7 +639,7 @@ def template_json(request, pk):
     })
 
 
-@login_required
+@staff_required
 def variables_view(request):
     """Return the full catalog of NotificationVariables as JSON."""
     return JsonResponse({
@@ -641,7 +658,7 @@ def variables_view(request):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def preview_render_view(request):
     """
@@ -719,7 +736,7 @@ def preview_render_view(request):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def validate_view(request):
     """

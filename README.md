@@ -84,6 +84,16 @@ for url_prefix, module, namespace in getattr(settings, "EXTRA_APPS_URLS", []):
 python manage.py migrate coldfront_notifications
 ```
 
+### Add the navbar dropdown
+
+Add this line to your ColdFront `authorized_navbar.html` (typically in `templates/common/authorized_navbar.html`), inside the `<ul>` that holds the nav items:
+
+```django
+{% include "coldfront_notifications/navbar.html" %}
+```
+
+The dropdown is only visible to staff/superusers.
+
 ### Seed the default Template Variables catalog (optional)
 
 ```bash
@@ -104,7 +114,13 @@ Or create your own variables from the UI: **Notifications → Template Variables
 
 ### Configure sender addresses
 
-Go to **Notifications → Settings** and add your sender/reply-to addresses. Flag one as Default From and one as Default Reply-To.
+If your ColdFront instance has `EMAIL_SENDER`, `EMAIL_TICKET_SYSTEM_ADDRESS`, or `EMAIL_DIRECTOR_EMAIL_ADDRESS` in settings, seed them in one command:
+
+```bash
+python manage.py seed_notification_senders
+```
+
+Safe to re-run — skips addresses that already exist. You can also manage addresses manually at **Notifications → Settings**.
 
 ---
 
