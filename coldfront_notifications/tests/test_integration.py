@@ -565,6 +565,86 @@ class ComposeViewTest(NotificationIntegrationTestCase):
         mock_dispatch.assert_called_once_with(campaign.pk)
 
 
+class StaffRequiredTest(NotificationIntegrationTestCase):
+    """Tests that non-staff users are blocked from all views."""
+
+    def setUp(self):
+        super().setUp()
+        # Log in as user2 who is NOT staff
+        self.client.force_login(self.user2)
+
+    def test_dashboard_requires_staff(self):
+        resp = self.client.get(reverse("notifications:dashboard"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_compose_requires_staff(self):
+        resp = self.client.get(reverse("notifications:compose"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_campaign_list_requires_staff(self):
+        resp = self.client.get(reverse("notifications:campaign-list"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_template_list_requires_staff(self):
+        resp = self.client.get(reverse("notifications:template-list"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_variable_list_requires_staff(self):
+        resp = self.client.get(reverse("notifications:variable-list"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_settings_requires_staff(self):
+        resp = self.client.get(reverse("notifications:settings"))
+        self.assertNotEqual(resp.status_code, 200)
+
+    def test_anonymous_user_blocked(self):
+        self.client.logout()
+        resp = self.client.get(reverse("notifications:dashboard"))
+        self.assertNotEqual(resp.status_code, 200)
+
+
+class SeedNotificationSendersCommandTest(NotificationIntegrationTestCase):
+    """Tests for the seed_notification_senders management command."""
+
+    @override_settings(
+        EMAIL_SENDER="test-sender@example.com",
+        EMAIL_TICKET_SYSTEM_ADDRESS="tickets@example.com",
+        EMAIL_DIRECTOR_EMAIL_ADDRESS="director@example.com",
+    )
+    def test_seeds_from_settings(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+        call_command("seed_notification_senders", stdout=out)
+        output = out.getvalue()
+        self.assertIn("created", output)
+        self.assertTrue(SenderConfig.objects.filter(email="test-sender@example.com").exists())
+        self.assertTrue(SenderConfig.objects.filter(email="tickets@example.com").exists())
+        self.assertTrue(SenderConfig.objects.filter(email="director@example.com").exists())
+
+    @override_settings(
+        EMAIL_SENDER="test-sender@example.com",
+        EMAIL_TICKET_SYSTEM_ADDRESS="tickets@example.com",
+    )
+    def test_skips_existing(self):
+        from django.core.management import call_command
+        from io import StringIO
+        SenderConfig.objects.create(email="test-sender@example.com", label="Existing")
+        out = StringIO()
+        call_command("seed_notification_senders", stdout=out)
+        output = out.getvalue()
+        self.assertIn("already exists", output)
+        # Should not duplicate
+        self.assertEqual(SenderConfig.objects.filter(email="test-sender@example.com").count(), 1)
+
+    def test_skips_unset_settings(self):
+        from django.core.management import call_command
+        from io import StringIO
+        out = StringIO()
+        call_command("seed_notification_senders", stdout=out)
+        self.assertIn("not set", out.getvalue())
+
+
 class CampaignProgressViewTest(NotificationIntegrationTestCase):
     """Tests for the campaign progress JSON endpoint."""
 

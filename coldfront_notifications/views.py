@@ -1,9 +1,8 @@
 import json
 import logging
-from functools import wraps
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.admin.views.decorators import staff_member_required as staff_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -11,16 +10,6 @@ from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
 from .forms import ComposeForm, NotificationTemplateForm, NotificationVariableForm, SenderConfigForm
-
-
-def staff_required(view_func):
-    """Restrict to authenticated staff/superusers."""
-    @wraps(view_func)
-    @login_required
-    @user_passes_test(lambda u: u.is_staff or u.is_superuser, login_url="/")
-    def wrapped(request, *args, **kwargs):
-        return view_func(request, *args, **kwargs)
-    return wrapped
 
 
 def _dispatch_send(campaign_pk: int):

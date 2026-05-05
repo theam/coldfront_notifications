@@ -1,0 +1,90 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install Django>=4.2,<5
+          pip install coverage
+
+      - name: Run unit tests
+        run: |
+          coverage run -m pytest coldfront_notifications/tests/test_unit.py -v
+          coverage report --show-missing --fail-under=90
+        env:
+          PYTHONPATH: .
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.10'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-coverage
+          path: .coverage
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install flake8
+
+      - name: Flake8
+        run: |
+          flake8 coldfront_notifications/ \
+            --max-line-length=120 \
+            --exclude=migrations,__pycache__,tests \
+            --ignore=E501,W503,E402
+
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install build tools
+        run: pip install build twine
+
+      - name: Build
+        run: python -m build
+
+      - name: Check package
+        run: twine check dist/*
+
+      - name: Verify wheel contents
+        run: |
+          pip install dist/*.whl
+          python -c "from coldfront_notifications import urls, models, views, resolvers, validators, tasks, conf; print('All modules importable')"
