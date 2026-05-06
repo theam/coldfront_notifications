@@ -18,8 +18,16 @@ from django.conf import settings
 
 if not settings.configured:
     settings.configure(
-        INSTALLED_APPS=["django.contrib.contenttypes"],
-        DATABASES={},
+        INSTALLED_APPS=[
+            "django.contrib.contenttypes",
+            "django.contrib.auth",
+        ],
+        DATABASES={
+            "default": {
+                "ENGINE": "django.db.backends.sqlite3",
+                "NAME": ":memory:",
+            }
+        },
         DEFAULT_AUTO_FIELD="django.db.models.BigAutoField",
     )
     django.setup()

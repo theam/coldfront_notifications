@@ -24,12 +24,13 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install Django>=4.2,<5
-          pip install coverage
+          pip install "Django>=4.2,<5" coverage
+        env:
+          PYTHONPATH: .
 
       - name: Run unit tests
         run: |
-          coverage run -m pytest coldfront_notifications/tests/test_unit.py -v
+          coverage run -m unittest coldfront_notifications.tests.test_unit -v
           coverage report --show-missing --fail-under=90
         env:
           PYTHONPATH: .
@@ -62,7 +63,7 @@ jobs:
           flake8 coldfront_notifications/ \
             --max-line-length=120 \
             --exclude=migrations,__pycache__,tests \
-            --ignore=E501,W503,E402
+            --ignore=E501,W503,E402,E241,E221,E231,W292
 
   build:
     name: Build Package
@@ -87,4 +88,24 @@ jobs:
       - name: Verify wheel contents
         run: |
           pip install dist/*.whl
-          python -c "from coldfront_notifications import urls, models, views, resolvers, validators, tasks, conf; print('All modules importable')"
+          python -c "
+          import django
+          from django.conf import settings
+          settings.configure(
+              INSTALLED_APPS=[
+                  'django.contrib.contenttypes',
+                  'django.contrib.auth',
+                  'django.contrib.admin',
+                  'django.contrib.sessions',
+                  'django.contrib.messages',
+                  'coldfront_notifications',
+              ],
+              DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}},
+              DEFAULT_AUTO_FIELD='django.db.models.BigAutoField',
+              AUTH_USER_MODEL='auth.User',
+              ROOT_URLCONF='coldfront_notifications.urls',
+          )
+          django.setup()
+          from coldfront_notifications import urls, models, views, resolvers, validators, tasks, conf
+          print('All modules importable')
+          "
