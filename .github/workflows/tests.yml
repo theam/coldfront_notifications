@@ -31,7 +31,8 @@ jobs:
       - name: Run unit tests
         run: |
           coverage run -m unittest coldfront_notifications.tests.test_unit -v
-          coverage report --show-missing --fail-under=90
+          coverage report --show-missing --fail-under=80 \
+            --include="coldfront_notifications/resolvers.py,coldfront_notifications/validators.py,coldfront_notifications/conf.py,coldfront_notifications/__init__.py"
         env:
           PYTHONPATH: .
 

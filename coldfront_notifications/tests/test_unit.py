@@ -21,6 +21,7 @@ if not settings.configured:
         INSTALLED_APPS=[
             "django.contrib.contenttypes",
             "django.contrib.auth",
+            "coldfront_notifications",
         ],
         DATABASES={
             "default": {
@@ -40,14 +41,22 @@ from coldfront_notifications.resolvers import (
     MissingValue,
     _fmt,
     _need,
+    _primary_resource,
     _scope_for,
     resolve,
 )
-from coldfront_notifications.tasks import TOKEN_RE as TASKS_TOKEN_RE, _is_transient, _render
+from coldfront_notifications.tasks import (
+    TOKEN_RE as TASKS_TOKEN_RE,
+    _build_values,
+    _is_transient,
+    _render,
+    _send_with_retry,
+)
 from coldfront_notifications.validators import (
     TOKEN_RE as VALIDATORS_TOKEN_RE,
     _extract_tokens,
     _required_scope,
+    validate_campaign,
 )
 
 
@@ -428,6 +437,289 @@ class TestTokenRegex(unittest.TestCase):
 
     def test_validators_and_tasks_same_pattern(self):
         self.assertEqual(TASKS_TOKEN_RE.pattern, VALIDATORS_TOKEN_RE.pattern)
+
+
+# ===========================================================================
+# resolvers.py — _primary_resource + resolve exception handling
+# ===========================================================================
+
+
+class TestPrimaryResource(unittest.TestCase):
+
+    def test_none_allocation_returns_none(self):
+        self.assertIsNone(_primary_resource(None))
+
+    def test_returns_get_parent_resource(self):
+        alloc = MagicMock()
+        alloc.get_parent_resource = "StorageA"
+        self.assertEqual(_primary_resource(alloc), "StorageA")
+
+
+class TestResolveExceptionHandling(unittest.TestCase):
+
+    def test_arbitrary_exception_becomes_missing_value(self):
+        """resolve() must not let random exceptions (TypeError, KeyError, etc.)
+        bubble up — they should all collapse to MissingValue."""
+        user = MagicMock()
+        # Force .username to raise TypeError when _fmt calls str()
+        type(user).username = property(lambda self: (_ for _ in ()).throw(TypeError("boom")))
+        ctx = {"user": user, "project": None, "allocation": None}
+        with self.assertRaises(MissingValue):
+            resolve("user.username", ctx)
+
+
+# ===========================================================================
+# tasks.py — _build_values
+# ===========================================================================
+
+
+class TestBuildValues(unittest.TestCase):
+
+    def _make_var(self, source="manual", resolver_key="", value="", is_required=True):
+        v = MagicMock()
+        v.source = source
+        v.SOURCE_MANUAL = "manual"
+        v.resolver_key = resolver_key
+        v.value = value
+        v.is_required = is_required
+        v.key = "test_var"
+        return v
+
+    def test_manual_var_with_value(self):
+        var = self._make_var(value="2026-06-01")
+        result = _build_values(["date"], {"date": var}, {"user": MagicMock()})
+        self.assertEqual(result["date"], "2026-06-01")
+
+    def test_manual_var_required_empty_raises(self):
+        var = self._make_var(value="", is_required=True)
+        with self.assertRaises(MissingValue):
+            _build_values(["date"], {"date": var}, {"user": MagicMock()})
+
+    def test_manual_var_not_required_empty_returns_empty(self):
+        var = self._make_var(value="", is_required=False)
+        result = _build_values(["date"], {"date": var}, {"user": MagicMock()})
+        self.assertEqual(result["date"], "")
+
+    @patch("coldfront_notifications.resolvers.resolve", return_value="alice@test.com")
+    def test_query_var_delegates_to_resolve(self, mock_resolve):
+        var = self._make_var(source="query", resolver_key="user.email")
+        ctx = {"user": MagicMock(email="alice@test.com")}
+        result = _build_values(["email"], {"email": var}, ctx)
+        self.assertEqual(result["email"], "alice@test.com")
+        mock_resolve.assert_called_once_with("user.email", ctx)
+
+    @patch("coldfront_notifications.resolvers.resolve", side_effect=MissingValue("no value"))
+    def test_query_var_resolution_failure_includes_context(self, _):
+        var = self._make_var(source="query", resolver_key="project.title")
+        user = MagicMock()
+        user.email = "bob@test.com"
+        with self.assertRaises(MissingValue) as ctx:
+            _build_values(["title"], {"title": var}, {"user": user})
+        self.assertIn("project.title", str(ctx.exception))
+        self.assertIn("bob@test.com", str(ctx.exception))
+
+    def test_unknown_token_raises(self):
+        with self.assertRaises(MissingValue) as ctx:
+            _build_values(["nonexistent"], {}, {"user": MagicMock()})
+        self.assertIn("nonexistent", str(ctx.exception))
+
+
+# ===========================================================================
+# tasks.py — _send_with_retry
+# ===========================================================================
+
+
+class TestSendWithRetry(unittest.TestCase):
+
+    def _make_msg_and_conn(self):
+        msg = MagicMock()
+        conn = MagicMock()
+        return msg, conn
+
+    def test_success_first_try(self):
+        msg, conn = self._make_msg_and_conn()
+        result = _send_with_retry(msg, conn, max_retries=2, base_delay=0)
+        self.assertIsNone(result)
+        msg.send.assert_called_once()
+
+    def test_permanent_error_returns_immediately(self):
+        msg, conn = self._make_msg_and_conn()
+        exc = smtplib.SMTPResponseException(550, "Mailbox not found")
+        msg.send.side_effect = exc
+        result = _send_with_retry(msg, conn, max_retries=2, base_delay=0)
+        self.assertIs(result, exc)
+        # Should NOT retry on 5xx
+        self.assertEqual(msg.send.call_count, 1)
+
+    @patch("coldfront_notifications.tasks.time.sleep")
+    def test_transient_then_success(self, mock_sleep):
+        msg, conn = self._make_msg_and_conn()
+        exc = smtplib.SMTPResponseException(421, "Try again")
+        msg.send.side_effect = [exc, None]  # fail once, then succeed
+        result = _send_with_retry(msg, conn, max_retries=2, base_delay=0.01)
+        self.assertIsNone(result)
+        self.assertEqual(msg.send.call_count, 2)
+
+    @patch("coldfront_notifications.tasks.time.sleep")
+    def test_transient_exhausts_retries(self, mock_sleep):
+        msg, conn = self._make_msg_and_conn()
+        exc = smtplib.SMTPResponseException(450, "Busy")
+        msg.send.side_effect = exc  # always fails
+        result = _send_with_retry(msg, conn, max_retries=2, base_delay=0.01)
+        self.assertIs(result, exc)
+        # 1 initial + 2 retries = 3 attempts
+        self.assertEqual(msg.send.call_count, 3)
+
+    @patch("coldfront_notifications.tasks.time.sleep")
+    def test_disconnect_reopens_connection(self, mock_sleep):
+        msg, conn = self._make_msg_and_conn()
+        exc = smtplib.SMTPServerDisconnected("gone")
+        msg.send.side_effect = [exc, None]
+        result = _send_with_retry(msg, conn, max_retries=2, base_delay=0.01)
+        self.assertIsNone(result)
+        conn.close.assert_called()
+        conn.open.assert_called()
+
+    @patch("coldfront_notifications.tasks.time.sleep")
+    def test_reopen_failure_returns_exception(self, mock_sleep):
+        msg, conn = self._make_msg_and_conn()
+        msg.send.side_effect = smtplib.SMTPServerDisconnected("gone")
+        reopen_exc = ConnectionError("cannot reopen")
+        conn.open.side_effect = reopen_exc
+        result = _send_with_retry(msg, conn, max_retries=2, base_delay=0.01)
+        self.assertIs(result, reopen_exc)
+
+    @patch("coldfront_notifications.tasks.time.sleep")
+    def test_close_failure_is_swallowed(self, mock_sleep):
+        """connection.close() throwing should not prevent the retry."""
+        msg, conn = self._make_msg_and_conn()
+        exc = smtplib.SMTPResponseException(421, "Try again")
+        msg.send.side_effect = [exc, None]
+        conn.close.side_effect = OSError("close failed")
+        result = _send_with_retry(msg, conn, max_retries=2, base_delay=0.01)
+        self.assertIsNone(result)
+        self.assertEqual(msg.send.call_count, 2)
+
+
+# ===========================================================================
+# validators.py — validate_campaign
+# ===========================================================================
+
+
+class TestValidateCampaign(unittest.TestCase):
+
+    PATCH_ENUM = "coldfront_notifications.validators.enumerate_recipients_deduped"
+    PATCH_RESOLVE = "coldfront_notifications.validators.resolve"
+
+    def _patch_nv_objects(self, return_value):
+        """Patch the local `from .models import NotificationVariable` inside
+        validate_campaign so .objects.filter() returns our fake vars."""
+        patcher = patch(
+            "coldfront_notifications.models.NotificationVariable.objects"
+        )
+        mock_objects = patcher.start()
+        mock_objects.filter.return_value = return_value
+        self.addCleanup(patcher.stop)
+
+    def _make_var(self, key, source="query", resolver_key="user.email",
+                  value="", is_required=True):
+        v = MagicMock()
+        v.key = key
+        v.source = source
+        v.SOURCE_QUERY = "query"
+        v.SOURCE_MANUAL = "manual"
+        v.resolver_key = resolver_key
+        v.value = value
+        v.is_required = is_required
+        return v
+
+    def _make_user(self, pk, username, email):
+        u = MagicMock()
+        u.pk = pk
+        u.username = username
+        u.email = email
+        return u
+
+    @patch(PATCH_ENUM)
+    def test_all_tokens_resolve_cleanly(self, mock_enum):
+        var = self._make_var("name", resolver_key="user.full_name")
+        self._patch_nv_objects([var])
+
+        user = self._make_user(1, "alice", "alice@test.com")
+        mock_enum.return_value = [(user, None, None)]
+
+        with patch(self.PATCH_RESOLVE, return_value="Alice"):
+            result = validate_campaign("Hi {{name}}", "body", {}, {})
+
+        self.assertEqual(result["errors"], [])
+        self.assertEqual(result["missing_tokens"], [])
+        self.assertEqual(result["user_count"], 1)
+        self.assertEqual(result["email_count"], 1)
+
+    @patch(PATCH_ENUM)
+    def test_unknown_token_in_missing_tokens(self, mock_enum):
+        self._patch_nv_objects([])  # no vars match
+        mock_enum.return_value = []
+        result = validate_campaign("Hi {{bogus}}", "body", {}, {})
+        self.assertIn("bogus", result["missing_tokens"])
+
+    @patch(PATCH_ENUM)
+    def test_manual_var_empty_value_reported(self, mock_enum):
+        var = self._make_var("date", source="manual", value="", is_required=True)
+        self._patch_nv_objects([var])
+
+        user = self._make_user(1, "bob", "bob@test.com")
+        mock_enum.return_value = [(user, None, None)]
+
+        result = validate_campaign("Due {{date}}", "body", {}, {})
+        self.assertEqual(len(result["errors"]), 1)
+        self.assertEqual(result["errors"][0]["token"], "date")
+
+    @patch(PATCH_ENUM)
+    def test_query_var_resolution_failure_reported(self, mock_enum):
+        var = self._make_var("title", resolver_key="project.title")
+        self._patch_nv_objects([var])
+
+        user = self._make_user(1, "carol", "carol@test.com")
+        mock_enum.return_value = [(user, None, None)]
+
+        with patch(self.PATCH_RESOLVE, side_effect=MissingValue()):
+            result = validate_campaign("Re: {{title}}", "body", {}, {})
+
+        self.assertEqual(len(result["errors"]), 1)
+        self.assertIn("project.title", result["errors"][0]["reason"])
+
+    @patch(PATCH_ENUM)
+    def test_multi_email_users_reported(self, mock_enum):
+        var = self._make_var("ptitle", resolver_key="project.title")
+        self._patch_nv_objects([var])
+
+        user = self._make_user(1, "alice", "alice@test.com")
+        proj1, proj2 = MagicMock(), MagicMock()
+        # alice appears on 2 projects → 2 tuples
+        mock_enum.return_value = [(user, proj1, None), (user, proj2, None)]
+
+        with patch(self.PATCH_RESOLVE, return_value="Proj"):
+            result = validate_campaign("{{ptitle}}", "body", {}, {})
+
+        self.assertEqual(result["email_count"], 2)
+        self.assertEqual(result["user_count"], 1)
+        self.assertEqual(len(result["multi_emails"]), 1)
+        self.assertEqual(result["multi_emails"][0]["username"], "alice")
+        self.assertEqual(result["multi_emails"][0]["count"], 2)
+
+    @patch(PATCH_ENUM)
+    def test_scope_propagated_correctly(self, mock_enum):
+        var = self._make_var("aid", resolver_key="allocation.id")
+        self._patch_nv_objects([var])
+        mock_enum.return_value = []
+
+        result = validate_campaign("Alloc {{aid}}", "body", {}, {})
+        self.assertEqual(result["scope"], "allocation")
+        # Verify enumerate was called with allocation scope
+        mock_enum.assert_called_once()
+        call_args = mock_enum.call_args
+        self.assertEqual(call_args[0][1], "allocation")
 
 
 if __name__ == "__main__":

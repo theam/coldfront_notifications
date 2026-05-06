@@ -9,7 +9,18 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
-from .forms import ComposeForm, NotificationTemplateForm, NotificationVariableForm, SenderConfigForm
+from .forms import NotificationTemplateForm, NotificationVariableForm, SenderConfigForm
+from .models import (
+    NotificationCampaign,
+    NotificationLog,
+    NotificationTemplate,
+    NotificationVariable,
+    SenderConfig,
+)
+from .utils import recipient_count
+from .validators import validate_campaign
+
+logger = logging.getLogger(__name__)
 
 
 def _dispatch_send(campaign_pk: int):
@@ -25,7 +36,6 @@ def _dispatch_send(campaign_pk: int):
         logger.warning("Celery broker unreachable (%s) — sending in background thread", exc)
 
         def _run():
-            import django
             from django import db
             try:
                 db.close_old_connections()
@@ -36,21 +46,10 @@ def _dispatch_send(campaign_pk: int):
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
-from .models import (
-    NotificationCampaign,
-    NotificationLog,
-    NotificationTemplate,
-    NotificationVariable,
-    SenderConfig,
-)
-from .utils import recipient_count, recipient_emails
-from .validators import validate_campaign
-
-logger = logging.getLogger(__name__)
 
 
 def _get_filter_context():
-    from coldfront.core.project.models import Project, ProjectUserRoleChoice, ProjectStatusChoice
+    from coldfront.core.project.models import Project, ProjectUserRoleChoice
     from coldfront.core.allocation.models import Allocation, AllocationStatusChoice
     from coldfront.core.resource.models import Resource
     from ifxuser.models import Organization
@@ -251,18 +250,18 @@ def compose(request):
         filters["extra_recipients"] = extra  # preserved in snapshot
         filters["dedupe_users"]     = dedupe_users
         campaign = NotificationCampaign.objects.create(
-            template_id      = tmpl_id or None,
-            subject          = subject,
-            body             = body,
-            sender           = sender,
-            reply_to         = reply_to,
-            status           = (NotificationCampaign.STATUS_DRAFT
-                                if action == "draft"
-                                else NotificationCampaign.STATUS_QUEUED),
-            filters_snapshot = filters,
-            extra_context    = {},
-            recipient_count  = 0,   # filled in during send
-            created_by       = request.user,
+            template_id=tmpl_id or None,
+            subject=subject,
+            body=body,
+            sender=sender,
+            reply_to=reply_to,
+            status=(NotificationCampaign.STATUS_DRAFT
+                    if action == "draft"
+                    else NotificationCampaign.STATUS_QUEUED),
+            filters_snapshot=filters,
+            extra_context={},
+            recipient_count=0,
+            created_by=request.user,
         )
 
         # Logs are created per-tuple during send; drafts carry no logs.
@@ -411,7 +410,7 @@ def recipient_count_view(request):
     want_start = (page - 1) * page_size
     want_end   = want_start + page_size
 
-    for user, project, allocation in enumerate_recipients_deduped(filters, scope, []):
+    for user, project, allocation in enumerate_recipients_deduped(filters, scope, dedupe_users):
         u = user.username
         user_counts[u] += 1
         if u not in user_info:
@@ -429,8 +428,10 @@ def recipient_count_view(request):
                 "user_pk":       user.pk,
                 "project_pk":    project.pk if project else None,
                 "project_title": project.title if project else "",
-                "allocation":    (f"{allocation.pk} — {allocation.get_parent_resource}"
-                                 if allocation else ""),
+                "allocation": (
+                    f"{allocation.pk} — {allocation.get_parent_resource}"
+                    if allocation else ""
+                ),
             })
 
         total += 1

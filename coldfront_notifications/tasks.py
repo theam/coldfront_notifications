@@ -253,7 +253,7 @@ def send_notification_campaign(campaign_pk: int):
     campaign.failed_count    = failed
     campaign.recipient_count = delivered + failed
     campaign.status = (
-        NotificationCampaign.STATUS_SENT    if failed == 0
+        NotificationCampaign.STATUS_SENT if failed == 0
         else NotificationCampaign.STATUS_PARTIAL if delivered > 0
         else NotificationCampaign.STATUS_FAILED
     )
