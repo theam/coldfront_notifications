@@ -450,11 +450,11 @@
 {% endblock %}
 
 {% block javascript %}
+{{ templates_data|json_script:"templates-data" }}
+{{ variables_data|json_script:"variables-data" }}
 <script>
-// Server-rendered data (needs Django context)
-var TEMPLATES = {{ templates_json|safe }};
-var VARIABLES = {{ variables_json|safe }};
-// Django URL endpoints for AJAX calls
+var TEMPLATES = JSON.parse(document.getElementById('templates-data').textContent);
+var VARIABLES = JSON.parse(document.getElementById('variables-data').textContent);
 var URLS = {
   previewRender:  '{% url "notifications:preview-render" %}',
   filterOptions:  '{% url "notifications:filter-options" %}',
@@ -462,5 +462,6 @@ var URLS = {
   recipientCount: '{% url "notifications:recipient-count" %}'
 };
 </script>
+<script src="{% static 'coldfront_notifications/js/notifications_shared.js' %}"></script>
 <script src="{% static 'coldfront_notifications/js/compose.js' %}"></script>
 {% endblock %}

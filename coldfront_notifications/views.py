@@ -155,7 +155,7 @@ def compose(request):
     templates = NotificationTemplate.objects.filter(is_deleted=False)
     ctx = _get_filter_context()
 
-    templates_json = json.dumps([
+    templates_data = [
         {
             "id":        t.pk,
             "slug":      t.slug,
@@ -165,9 +165,9 @@ def compose(request):
             "variables": t.variables,
         }
         for t in templates
-    ])
+    ]
 
-    variables_json = json.dumps([
+    variables_data = [
         {
             "key":          v.key,
             "label":        v.label,
@@ -178,7 +178,7 @@ def compose(request):
             "is_required":  v.is_required,
         }
         for v in NotificationVariable.objects.filter(is_deleted=False)
-    ])
+    ]
 
     if request.method == "POST":
         action = request.POST.get("action", "send")
@@ -226,7 +226,7 @@ def compose(request):
             messages.error(request, "Subject and body are required.")
             ctx.update({
                 "templates": templates,
-                "templates_json": templates_json,
+                "templates_data": templates_data,
             })
             return render(request, "compose.html", ctx)
 
@@ -243,7 +243,7 @@ def compose(request):
                 ctx.update({
                     "validation": v,
                     "templates": templates,
-                    "templates_json": templates_json,
+                    "templates_data": templates_data,
                 })
                 return render(request, "compose.html", ctx)
 
@@ -275,8 +275,8 @@ def compose(request):
 
     ctx.update({
         "templates":      templates,
-        "templates_json": templates_json,
-        "variables_json": variables_json,
+        "templates_data": templates_data,
+        "variables_data": variables_data,
     })
     return render(request, "compose.html", ctx)
 
@@ -502,7 +502,7 @@ def template_form(request, pk=None):
     else:
         form = NotificationTemplateForm(instance=instance)
 
-    variables_json = json.dumps([
+    variables_data = [
         {
             "key":         v.key,
             "label":       v.label,
@@ -511,12 +511,12 @@ def template_form(request, pk=None):
             "source":      v.source,
         }
         for v in NotificationVariable.objects.filter(is_deleted=False)
-    ])
+    ]
 
     return render(request, "template_form.html", {
         "form":     form,
         "template": instance,
-        "variables_json": variables_json,
+        "variables_data": variables_data,
     })
 
 
@@ -804,6 +804,6 @@ def resend_compose(request, pk):
     return render(request, "resend_compose.html", {
         "source": source,
         "snapshot": snapshot,
-        "snapshot_json": json.dumps(snapshot),
+        "snapshot_data": snapshot,
         "senders": SenderConfig.objects.all(),
     })

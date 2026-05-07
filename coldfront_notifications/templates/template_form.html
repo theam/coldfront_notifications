@@ -140,9 +140,10 @@
 {% endblock %}
 
 {% block javascript %}
+{{ variables_data|json_script:"variables-data" }}
 <script>
 // Server-rendered data (needs Django context)
-var ALL_VARS = {{ variables_json|safe }};
+var ALL_VARS = JSON.parse(document.getElementById('variables-data').textContent);
 var IS_EDIT = {% if template %}true{% else %}false{% endif %};
 </script>
 <script src="{% static 'coldfront_notifications/js/template_form.js' %}"></script>

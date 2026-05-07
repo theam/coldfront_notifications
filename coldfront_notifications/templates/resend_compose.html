@@ -268,23 +268,21 @@
 {% endblock %}
 
 {% block javascript %}
+{{ snapshot_data|json_script:"snapshot-data" }}
 <script>
-var SNAPSHOT = {{ snapshot_json|safe }};
+var SNAPSHOT = JSON.parse(document.getElementById('snapshot-data').textContent);
 var URLS = {
   previewRender:  '{% url "notifications:preview-render" %}',
   recipientCount: '{% url "notifications:recipient-count" %}',
   validate:       '{% url "notifications:validate" %}'
 };
 </script>
+<script src="{% static 'coldfront_notifications/js/notifications_shared.js' %}"></script>
 <script>
 (function() {
-  var csrfToken = $('input[name=csrfmiddlewaretoken]').val();
-
-  // ── Filters from the original campaign snapshot ──────────────────
   function snapshotFilters() { return SNAPSHOT; }
-  function snapshotFilterList(key) { return (SNAPSHOT[key] || []); }
 
-  // ── Validate ─────────────────────────────────────────────────────
+  // ── Validate (inline — resend-specific banner behavior) ─────────
   $(document).on('click', '#recalcBtn', function() {
     var $btn = $(this);
     $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Validating...');
@@ -292,7 +290,7 @@ var URLS = {
     $.ajax({
       url: URLS.validate, type: 'POST',
       data: {
-        csrfmiddlewaretoken: csrfToken,
+        csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
         subject: $('#id_subject').val() || '',
         body: $('#id_body').val() || '',
         filters: JSON.stringify(snapshotFilters()),
@@ -307,7 +305,7 @@ var URLS = {
         if (miss.length || errs.length) {
           var html = '';
           if (miss.length) {
-            var tokens = miss.map(function(t) { return '<code>{% templatetag openvariable %}' + t + '{% templatetag closevariable %}</code>'; }).join(', ');
+            var tokens = miss.map(function(t) { return '<code>{% templatetag openvariable %}' + esc(t) + '{% templatetag closevariable %}</code>'; }).join(', ');
             html += '<div class="alert alert-danger py-2 mb-2" style="font-size:.84rem;">'
               + '<i class="fas fa-exclamation-triangle mr-1"></i>'
               + '<strong>' + miss.length + ' unknown token(s):</strong> ' + tokens + '</div>';
@@ -336,154 +334,34 @@ var URLS = {
     });
   });
 
-  // ── Email Preview modal ──────────────────────────────────────────
-  var PREVIEW_SAMPLES = [];
-
-  function renderPreviewSample(idx) {
-    var s = PREVIEW_SAMPLES[idx];
-    if (!s) {
-      $('#prev-to').text('--');
-      $('#prev-subject').text($('#id_subject').val() || '--');
-      $('#prev-body').text($('#id_body').val() || '--');
-      $('#prev-error').hide();
-      $('#prev-footer').text('Showing template with literal placeholders');
-      return;
-    }
-    $('#prev-to').text((s.recipient.name || s.recipient.username) + ' <' + s.recipient.email + '>');
-    $('#prev-subject').text(s.subject || '--');
-    $('#prev-body').text(s.body || '--');
-    if (s.error) { $('#prev-error').text('Resolution error: ' + s.error).show(); }
-    else { $('#prev-error').hide(); }
-    var ctx = [];
-    if (s.recipient.project) ctx.push('project: ' + s.recipient.project);
-    if (s.recipient.allocation) ctx.push('allocation: ' + s.recipient.allocation);
-    $('#prev-footer').text(ctx.join(' · ') || 'recipient-only context');
-  }
-
+  // ── Email Preview — delegates to shared NotifPreview ────────────
   $(document).on('click', '#previewBtn', function() {
-    $('#prev-from').text($('#id_sender').val());
-    $('#prev-replyto').text($('#id_reply_to').val());
-    PREVIEW_SAMPLES = [];
-    $('#prev-recipient-picker').html('<option value="">-- Template (raw placeholders) --</option>'
-      + '<option disabled>Loading samples...</option>');
-    renderPreviewSample(null);
-    $('#prev-scope-badge').text('');
-    $('#previewModal').modal('show');
-
-    $.ajax({
-      url: URLS.previewRender, type: 'POST',
-      data: {
-        csrfmiddlewaretoken: csrfToken,
-        subject: $('#id_subject').val() || '',
-        body: $('#id_body').val() || '',
-        filters: JSON.stringify(snapshotFilters()),
-        dedupe_users: JSON.stringify([]),
-      },
-      success: function(data) {
-        PREVIEW_SAMPLES = data.samples || [];
-        var opts = ['<option value="">-- Template (raw placeholders) --</option>'];
-        PREVIEW_SAMPLES.forEach(function(s, i) {
-          var lbl = (s.recipient.name || s.recipient.username) + ' <' + s.recipient.email + '>';
-          if (s.recipient.project) lbl += ' · ' + s.recipient.project;
-          opts.push('<option value="' + i + '">' + lbl + '</option>');
-        });
-        if (!PREVIEW_SAMPLES.length) opts.push('<option disabled>(no matching recipients)</option>');
-        $('#prev-recipient-picker').html(opts.join(''));
-        if (data.scope) $('#prev-scope-badge').text('scope: ' + data.scope + ' · ' + (data.total_emails || 0) + ' total');
-        if (PREVIEW_SAMPLES.length) { $('#prev-recipient-picker').val('0'); renderPreviewSample(0); }
-        else { renderPreviewSample(null); }
-      },
-      error: function() {
-        $('#prev-recipient-picker').html('<option value="">-- Template (raw placeholders) --</option>');
-        $('#prev-footer').text('Preview failed to load');
-      },
-    });
+    NotifPreview.open(snapshotFilters, function() { return []; });
   });
 
-  $(document).on('change', '#prev-recipient-picker', function() {
-    var v = $(this).val();
-    renderPreviewSample(v === '' ? null : parseInt(v, 10));
-  });
-
-  // ── Recipient Preview modal ──────────────────────────────────────
-  var PREVIEW_ROWS = [], PREVIEW_SCOPE = null, PREVIEW_PAGE = 1, PREVIEW_TOTAL_PAGES = 1;
-
-  function getPageSize() { return parseInt($('#recipPageSize').val(), 10) || 10; }
-
-  function updatePaginationControls() {
-    var atFirst = PREVIEW_PAGE <= 1, atLast = PREVIEW_PAGE >= PREVIEW_TOTAL_PAGES;
-    $('#recipPageInfo').text('Page ' + PREVIEW_PAGE + ' of ' + PREVIEW_TOTAL_PAGES);
-    $('#recipFirstBtn').prop('disabled', atFirst);
-    $('#recipPrevBtn').prop('disabled', atFirst);
-    $('#recipNextBtn').prop('disabled', atLast);
-    $('#recipLastBtn').prop('disabled', atLast);
-  }
-
-  function renderRecipRows() {
-    var html = '';
-    PREVIEW_ROWS.forEach(function(r) {
-      html += '<tr>'
-        + '<td>' + (r.full_name || '') + '</td>'
-        + '<td style="font-family:monospace;font-size:.78rem;">' + (r.email || '') + '</td>'
-        + '<td>' + (r.role || '') + '</td>'
-        + '<td>' + (r.project || '') + '</td>'
-        + '<td style="font-size:.78rem;">' + (r.allocation || '') + '</td>'
+  // ── Recipient Preview — delegates to shared NotifRecipients ─────
+  NotifRecipients.init({
+    colCount: 5,
+    getFilterData: function() {
+      return {
+        projects: (SNAPSHOT.projects || []),
+        allocations: (SNAPSHOT.allocations || []),
+        departments: (SNAPSHOT.departments || []),
+        resources: (SNAPSHOT.resources || []),
+        alloc_status: (SNAPSHOT.statuses || []),
+        roles: (SNAPSHOT.roles || []),
+      };
+    },
+    getDedupeUsers: function() { return []; },
+    renderRow: function(r) {
+      return '<tr>'
+        + '<td>' + esc(r.full_name || '') + '</td>'
+        + '<td style="font-family:monospace;font-size:.78rem;">' + esc(r.email || '') + '</td>'
+        + '<td>' + esc(r.role || '') + '</td>'
+        + '<td>' + esc(r.project || '') + '</td>'
+        + '<td style="font-size:.78rem;">' + esc(r.allocation || '') + '</td>'
         + '</tr>';
-    });
-    $('#recipRows').html(html || '<tr><td colspan="5" class="text-center text-muted py-3">No recipients matched.</td></tr>');
-
-    var scopeLbl = PREVIEW_SCOPE ? 'scope: ' + PREVIEW_SCOPE : '';
-    $('#recipModalCount').text(PREVIEW_ROWS.length + ' on this page');
-    if (PREVIEW_SCOPE) { $('#recipModalScope').text(scopeLbl).show(); } else { $('#recipModalScope').hide(); }
-  }
-
-  function fetchPreviewPage(page) {
-    PREVIEW_PAGE = page || 1;
-    $('#recipSearch').val('');
-    $('#recipRows').html('<tr><td colspan="5" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin mr-1"></i>Loading...</td></tr>');
-
-    $.ajax({
-      url: URLS.recipientCount, type: 'POST',
-      data: {
-        csrfmiddlewaretoken: csrfToken,
-        projects: snapshotFilterList('projects'),
-        allocations: snapshotFilterList('allocations'),
-        departments: snapshotFilterList('departments'),
-        resources: snapshotFilterList('resources'),
-        alloc_status: snapshotFilterList('statuses'),
-        roles: snapshotFilterList('roles'),
-        subject: $('#id_subject').val() || '',
-        body: $('#id_body').val() || '',
-        dedupe_users: JSON.stringify([]),
-        preview: 'true',
-        page: PREVIEW_PAGE,
-        page_size: getPageSize(),
-      },
-      traditional: true,
-      success: function(data) {
-        PREVIEW_ROWS = data.recipients || [];
-        PREVIEW_SCOPE = data.scope || null;
-        PREVIEW_TOTAL_PAGES = data.total_pages || 1;
-        PREVIEW_PAGE = data.page || 1;
-        renderRecipRows();
-        updatePaginationControls();
-      },
-      error: function() {
-        $('#recipRows').html('<tr><td colspan="5" class="text-center text-danger py-3">Failed to load.</td></tr>');
-      }
-    });
-  }
-
-  $(document).on('click', '#previewRecipBtn', function() { $('#recipModal').modal('show'); fetchPreviewPage(1); });
-  $(document).on('click', '#recipFirstBtn', function() { if (PREVIEW_PAGE > 1) fetchPreviewPage(1); });
-  $(document).on('click', '#recipPrevBtn', function() { if (PREVIEW_PAGE > 1) fetchPreviewPage(PREVIEW_PAGE - 1); });
-  $(document).on('click', '#recipNextBtn', function() { if (PREVIEW_PAGE < PREVIEW_TOTAL_PAGES) fetchPreviewPage(PREVIEW_PAGE + 1); });
-  $(document).on('click', '#recipLastBtn', function() { if (PREVIEW_PAGE < PREVIEW_TOTAL_PAGES) fetchPreviewPage(PREVIEW_TOTAL_PAGES); });
-  $(document).on('change', '#recipPageSize', function() { fetchPreviewPage(1); });
-
-  $(document).on('input', '#recipSearch', function() {
-    var q = $(this).val().toLowerCase();
-    $('#recipRows tr').each(function() { $(this).toggle(!q || $(this).text().toLowerCase().indexOf(q) !== -1); });
+    },
   });
 
 })();
