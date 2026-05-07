@@ -9,6 +9,7 @@ urlpatterns = [
     path("campaigns/",                views.campaign_list,        name="campaign-list"),
     path("campaigns/<int:pk>/",       views.campaign_detail,      name="campaign-detail"),
     path("campaigns/<int:pk>/resend/",views.resend_failed,        name="resend"),
+    path("campaigns/<int:pk>/resend-compose/",views.resend_compose, name="resend-compose"),
     path("campaigns/<int:pk>/progress/",views.campaign_progress, name="campaign-progress"),
     path("templates/",                views.template_list,        name="template-list"),
     path("templates/new/",            views.template_form,        name="template-create"),

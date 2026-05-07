@@ -84,6 +84,15 @@ $(document).on('click', '.tmpl-item', function() {
   loadTemplate($(this));
 });
 
+// ── Template search ─────────────────────────────────────────────
+$(document).on('input', '#tmplSearch', function() {
+  var q = $(this).val().toLowerCase();
+  $('.tmpl-item').each(function() {
+    var text = $(this).text().toLowerCase();
+    $(this).toggle(!q || text.indexOf(q) !== -1);
+  });
+});
+
 // ── Variable search ──────────────────────────────────────────────
 $(document).on('input', '#varSearch', function() {
   renderVars(ACTIVE_VARS, $(this).val());
@@ -359,7 +368,7 @@ function runValidation() {
   });
 }
 
-$(document).on('click', '#recalcBtn', function() { runValidation(); });
+$(document).on('click', '#recalcBtn, #recalcBtn2', function() { runValidation(); });
 
 $(document).on('click', '#multiShowBtn', function() {
   $('#multiList').toggle();
@@ -446,8 +455,23 @@ function renderPreviewRows() {
 
 }
 
+function getPageSize() {
+  return parseInt($('#recipPageSize').val(), 10) || 10;
+}
+
+function updatePaginationControls() {
+  var atFirst = PREVIEW_PAGE <= 1;
+  var atLast = PREVIEW_PAGE >= PREVIEW_TOTAL_PAGES;
+  $('#recipPageInfo').text('Page ' + PREVIEW_PAGE + ' of ' + PREVIEW_TOTAL_PAGES);
+  $('#recipFirstBtn').prop('disabled', atFirst);
+  $('#recipPrevBtn').prop('disabled', atFirst);
+  $('#recipNextBtn').prop('disabled', atLast);
+  $('#recipLastBtn').prop('disabled', atLast);
+}
+
 function fetchPreviewPage(page) {
   PREVIEW_PAGE = page || 1;
+  $('#recipSearch').val('');
   $('#recipRows').html('<tr><td colspan="6" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin mr-1"></i>Loading…</td></tr>');
 
   $.ajax({
@@ -466,6 +490,7 @@ function fetchPreviewPage(page) {
       dedupe_users: JSON.stringify(getDedupeUsers()),
       preview:      'true',
       page:         PREVIEW_PAGE,
+      page_size:    getPageSize(),
     },
     traditional: true,
     success: function(data) {
@@ -486,15 +511,7 @@ function fetchPreviewPage(page) {
       } else {
         $('#dedupeAllRow').hide();
       }
-      // Pagination controls
-      if (PREVIEW_TOTAL_PAGES > 1) {
-        $('#recipPagination').show();
-        $('#recipPageInfo').text('Page ' + PREVIEW_PAGE + ' of ' + PREVIEW_TOTAL_PAGES);
-        $('#recipPrevBtn').prop('disabled', PREVIEW_PAGE <= 1);
-        $('#recipNextBtn').prop('disabled', PREVIEW_PAGE >= PREVIEW_TOTAL_PAGES);
-      } else {
-        $('#recipPagination').hide();
-      }
+      updatePaginationControls();
     },
     error: function() {
       $('#recipRows').html('<tr><td colspan="6" class="text-center text-danger py-3">Failed to load.</td></tr>');
@@ -506,11 +523,29 @@ $(document).on('click', '#previewRecipBtn', function() {
   $('#recipModal').modal('show');
   fetchPreviewPage(1);
 });
+$(document).on('click', '#recipFirstBtn', function() {
+  if (PREVIEW_PAGE > 1) fetchPreviewPage(1);
+});
 $(document).on('click', '#recipPrevBtn', function() {
   if (PREVIEW_PAGE > 1) fetchPreviewPage(PREVIEW_PAGE - 1);
 });
 $(document).on('click', '#recipNextBtn', function() {
   if (PREVIEW_PAGE < PREVIEW_TOTAL_PAGES) fetchPreviewPage(PREVIEW_PAGE + 1);
+});
+$(document).on('click', '#recipLastBtn', function() {
+  if (PREVIEW_PAGE < PREVIEW_TOTAL_PAGES) fetchPreviewPage(PREVIEW_TOTAL_PAGES);
+});
+$(document).on('change', '#recipPageSize', function() {
+  fetchPreviewPage(1);
+});
+
+// Client-side search: filter visible rows in the current page
+$(document).on('input', '#recipSearch', function() {
+  var q = $(this).val().toLowerCase();
+  $('#recipRows tr').each(function() {
+    var text = $(this).text().toLowerCase();
+    $(this).toggle(!q || text.indexOf(q) !== -1);
+  });
 });
 
 // All multi-email usernames across all pages (from server response).
@@ -560,6 +595,7 @@ $(document).ready(function() {
     width: '100%',
     placeholder: function() { return $(this).data('placeholder'); }
   });
+
   // Load first template
   var $first = $('.tmpl-item').first();
   if ($first.length) loadTemplate($first);

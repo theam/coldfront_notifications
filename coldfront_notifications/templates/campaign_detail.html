@@ -7,6 +7,9 @@
     <div class="d-flex justify-content-between align-items-center">
       <h2>Notification #{{ campaign.pk }}</h2>
       <div>
+        <a href="{% url 'notifications:resend-compose' campaign.pk %}" class="btn btn-outline-primary btn-sm">
+          <i class="fas fa-clone mr-1"></i>Resend
+        </a>
         {% if campaign.failed_count %}
         <form method="post" action="{% url 'notifications:resend' campaign.pk %}" class="d-inline">
           {% csrf_token %}

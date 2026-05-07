@@ -389,7 +389,10 @@ def recipient_count_view(request):
     except (ValueError, TypeError):
         page = 1
     from .conf import PREVIEW_PAGE_SIZE
-    page_size = PREVIEW_PAGE_SIZE
+    try:
+        page_size = max(10, min(100, int(request.POST.get("page_size", PREVIEW_PAGE_SIZE))))
+    except (ValueError, TypeError):
+        page_size = PREVIEW_PAGE_SIZE
 
     # Determine scope the same way the validator/sender will.
     from .utils import enumerate_recipients_deduped
@@ -761,3 +764,46 @@ def validate_view(request):
     result = validate_campaign(subject, body, filters, extra_context,
                                dedupe_users=dedupe_users)
     return JsonResponse(result)
+
+
+@staff_required
+def resend_compose(request, pk):
+    """
+    Show a review-and-resend page pre-filled from an existing campaign.
+    POST creates a new campaign and dispatches it.
+    """
+    source = get_object_or_404(NotificationCampaign, pk=pk)
+    snapshot = source.filters_snapshot or {}
+
+    if request.method == "POST":
+        subject = request.POST.get("subject", "").strip()
+        body = request.POST.get("body", "").strip()
+        sender = request.POST.get("sender", "")
+        reply_to = request.POST.get("reply_to", "")
+
+        if not subject or not body:
+            messages.error(request, "Subject and body are required.")
+            return redirect("notifications:resend-compose", pk=pk)
+
+        campaign = NotificationCampaign.objects.create(
+            template=source.template,
+            subject=subject,
+            body=body,
+            sender=sender,
+            reply_to=reply_to,
+            status=NotificationCampaign.STATUS_QUEUED,
+            filters_snapshot=snapshot,
+            extra_context=source.extra_context or {},
+            recipient_count=0,
+            created_by=request.user,
+        )
+        _dispatch_send(campaign.pk)
+        messages.info(request, "Resend queued — sending in progress.")
+        return redirect("notifications:campaign-detail", pk=campaign.pk)
+
+    return render(request, "resend_compose.html", {
+        "source": source,
+        "snapshot": snapshot,
+        "snapshot_json": json.dumps(snapshot),
+        "senders": SenderConfig.objects.all(),
+    })

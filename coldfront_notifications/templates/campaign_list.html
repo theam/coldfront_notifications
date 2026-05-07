@@ -44,7 +44,7 @@
           <td class="text-right text-success" style="font-family:monospace;">{{ c.delivered_count }}</td>
           <td class="text-right {% if c.failed_count %}text-danger{% else %}text-muted{% endif %}" style="font-family:monospace;">{{ c.failed_count|default:"—" }}</td>
           <td style="font-size:.8rem;">{{ c.sent_at|date:"Y-m-d H:i"|default:"—" }}</td>
-          <td>
+          <td data-order="{% if c.status == 'failed' %}0{% elif c.status == 'partial' %}1{% elif c.status == 'sending' %}2{% elif c.status == 'queued' %}3{% elif c.status == 'draft' %}4{% else %}5{% endif %}">
             {% if c.status == 'sent' %}<span class="badge badge-success">Sent</span>
             {% elif c.status == 'sending' %}<span class="badge badge-primary">Sending…</span>
             {% elif c.status == 'partial' %}<span class="badge badge-warning text-dark">Partial</span>
@@ -63,7 +63,7 @@
 {% endblock %}
 {% block javascript %}
 <script>
-var DT_CONFIG = { tableId: 'campaignsTable', order: [[6, 'desc']], nonOrderableTargets: [7] };
+var DT_CONFIG = { tableId: 'campaignsTable', order: [[7, 'asc'], [6, 'desc']] };
 </script>
 <script src="{% static 'coldfront_notifications/js/datatables_init.js' %}"></script>
 {% endblock %}
