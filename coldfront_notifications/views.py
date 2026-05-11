@@ -2,14 +2,25 @@ import json
 import logging
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required as staff_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.text import slugify
 from django.views.decorators.http import require_POST
 
-from .forms import ComposeForm, NotificationTemplateForm, NotificationVariableForm, SenderConfigForm
+from .forms import NotificationTemplateForm, NotificationVariableForm, SenderConfigForm
+from .models import (
+    NotificationCampaign,
+    NotificationLog,
+    NotificationTemplate,
+    NotificationVariable,
+    SenderConfig,
+)
+from .utils import recipient_count
+from .validators import validate_campaign
+
+logger = logging.getLogger(__name__)
 
 
 def _dispatch_send(campaign_pk: int):
@@ -25,7 +36,6 @@ def _dispatch_send(campaign_pk: int):
         logger.warning("Celery broker unreachable (%s) — sending in background thread", exc)
 
         def _run():
-            import django
             from django import db
             try:
                 db.close_old_connections()
@@ -36,21 +46,10 @@ def _dispatch_send(campaign_pk: int):
 
         t = threading.Thread(target=_run, daemon=True)
         t.start()
-from .models import (
-    NotificationCampaign,
-    NotificationLog,
-    NotificationTemplate,
-    NotificationVariable,
-    SenderConfig,
-)
-from .utils import recipient_count, recipient_emails
-from .validators import validate_campaign
-
-logger = logging.getLogger(__name__)
 
 
 def _get_filter_context():
-    from coldfront.core.project.models import Project, ProjectUserRoleChoice, ProjectStatusChoice
+    from coldfront.core.project.models import Project, ProjectUserRoleChoice
     from coldfront.core.allocation.models import Allocation, AllocationStatusChoice
     from coldfront.core.resource.models import Resource
     from ifxuser.models import Organization
@@ -70,6 +69,7 @@ def _get_filter_context():
     }
 
 
+@staff_required
 def dashboard(request):
     from datetime import timedelta
     thirty_days_ago = timezone.now() - timedelta(days=30)
@@ -90,6 +90,7 @@ def dashboard(request):
     })
 
 
+@staff_required
 def campaign_list(request):
     status_filter = request.GET.get("status", "")
     qs = NotificationCampaign.objects.select_related("template")
@@ -101,6 +102,7 @@ def campaign_list(request):
     })
 
 
+@staff_required
 def campaign_detail(request, pk):
     campaign = get_object_or_404(NotificationCampaign, pk=pk)
     logs = campaign.logs.all()
@@ -110,7 +112,7 @@ def campaign_detail(request, pk):
     })
 
 
-@login_required
+@staff_required
 def campaign_progress(request, pk):
     """Lightweight JSON endpoint for AJAX progress polling."""
     campaign = get_object_or_404(NotificationCampaign, pk=pk)
@@ -124,7 +126,7 @@ def campaign_progress(request, pk):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def resend_failed(request, pk):
     campaign = get_object_or_404(NotificationCampaign, pk=pk)
@@ -148,6 +150,7 @@ def resend_failed(request, pk):
     return redirect("notifications:campaign-detail", pk=pk)
 
 
+@staff_required
 def compose(request):
     templates = NotificationTemplate.objects.filter(is_deleted=False)
     ctx = _get_filter_context()
@@ -247,18 +250,18 @@ def compose(request):
         filters["extra_recipients"] = extra  # preserved in snapshot
         filters["dedupe_users"]     = dedupe_users
         campaign = NotificationCampaign.objects.create(
-            template_id      = tmpl_id or None,
-            subject          = subject,
-            body             = body,
-            sender           = sender,
-            reply_to         = reply_to,
-            status           = (NotificationCampaign.STATUS_DRAFT
-                                if action == "draft"
-                                else NotificationCampaign.STATUS_QUEUED),
-            filters_snapshot = filters,
-            extra_context    = {},
-            recipient_count  = 0,   # filled in during send
-            created_by       = request.user,
+            template_id=tmpl_id or None,
+            subject=subject,
+            body=body,
+            sender=sender,
+            reply_to=reply_to,
+            status=(NotificationCampaign.STATUS_DRAFT
+                    if action == "draft"
+                    else NotificationCampaign.STATUS_QUEUED),
+            filters_snapshot=filters,
+            extra_context={},
+            recipient_count=0,
+            created_by=request.user,
         )
 
         # Logs are created per-tuple during send; drafts carry no logs.
@@ -278,7 +281,7 @@ def compose(request):
     return render(request, "compose.html", ctx)
 
 
-@login_required
+@staff_required
 @require_POST
 def filter_options(request):
     """
@@ -359,7 +362,7 @@ def filter_options(request):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def recipient_count_view(request):
     filters = {
@@ -386,7 +389,10 @@ def recipient_count_view(request):
     except (ValueError, TypeError):
         page = 1
     from .conf import PREVIEW_PAGE_SIZE
-    page_size = PREVIEW_PAGE_SIZE
+    try:
+        page_size = max(10, min(100, int(request.POST.get("page_size", PREVIEW_PAGE_SIZE))))
+    except (ValueError, TypeError):
+        page_size = PREVIEW_PAGE_SIZE
 
     # Determine scope the same way the validator/sender will.
     from .utils import enumerate_recipients_deduped
@@ -407,7 +413,7 @@ def recipient_count_view(request):
     want_start = (page - 1) * page_size
     want_end   = want_start + page_size
 
-    for user, project, allocation in enumerate_recipients_deduped(filters, scope, []):
+    for user, project, allocation in enumerate_recipients_deduped(filters, scope, dedupe_users):
         u = user.username
         user_counts[u] += 1
         if u not in user_info:
@@ -425,8 +431,10 @@ def recipient_count_view(request):
                 "user_pk":       user.pk,
                 "project_pk":    project.pk if project else None,
                 "project_title": project.title if project else "",
-                "allocation":    (f"{allocation.pk} — {allocation.get_parent_resource}"
-                                 if allocation else ""),
+                "allocation": (
+                    f"{allocation.pk} — {allocation.get_parent_resource}"
+                    if allocation else ""
+                ),
             })
 
         total += 1
@@ -471,12 +479,14 @@ def recipient_count_view(request):
     })
 
 
+@staff_required
 def template_list(request):
     return render(request, "template_list.html", {
         "templates": NotificationTemplate.objects.filter(is_deleted=False),
     })
 
 
+@staff_required
 def template_form(request, pk=None):
     instance = get_object_or_404(NotificationTemplate, pk=pk) if pk else None
     if request.method == "POST":
@@ -510,7 +520,7 @@ def template_form(request, pk=None):
     })
 
 
-@login_required
+@staff_required
 def template_delete(request, pk):
     instance = get_object_or_404(NotificationTemplate, pk=pk)
     # Count notifications that used this template
@@ -526,14 +536,14 @@ def template_delete(request, pk):
     })
 
 
-@login_required
+@staff_required
 def variable_list(request):
     return render(request, "variable_list.html", {
         "variables": NotificationVariable.objects.filter(is_deleted=False),
     })
 
 
-@login_required
+@staff_required
 def variable_form(request, pk=None):
     instance = get_object_or_404(NotificationVariable, pk=pk) if pk else None
     if request.method == "POST":
@@ -555,7 +565,7 @@ def variable_form(request, pk=None):
     })
 
 
-@login_required
+@staff_required
 def variable_delete(request, pk):
     instance = get_object_or_404(NotificationVariable, pk=pk)
     # Find templates that reference this variable's key
@@ -574,13 +584,13 @@ def variable_delete(request, pk):
     })
 
 
-@login_required
+@staff_required
 def settings_view(request):
     senders = SenderConfig.objects.all()
     return render(request, "settings.html", {"senders": senders})
 
 
-@login_required
+@staff_required
 def sender_form(request, pk=None):
     instance = get_object_or_404(SenderConfig, pk=pk) if pk else None
     if request.method == "POST":
@@ -598,7 +608,7 @@ def sender_form(request, pk=None):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def sender_delete(request, pk):
     obj = get_object_or_404(SenderConfig, pk=pk)
@@ -608,7 +618,7 @@ def sender_delete(request, pk):
     return redirect("notifications:settings")
 
 
-@login_required
+@staff_required
 def template_json(request, pk):
     """Return a single template's live content for the compose-page sidebar."""
     t = get_object_or_404(NotificationTemplate, pk=pk)
@@ -622,7 +632,7 @@ def template_json(request, pk):
     })
 
 
-@login_required
+@staff_required
 def variables_view(request):
     """Return the full catalog of NotificationVariables as JSON."""
     return JsonResponse({
@@ -641,7 +651,7 @@ def variables_view(request):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def preview_render_view(request):
     """
@@ -719,7 +729,7 @@ def preview_render_view(request):
     })
 
 
-@login_required
+@staff_required
 @require_POST
 def validate_view(request):
     """
@@ -754,3 +764,46 @@ def validate_view(request):
     result = validate_campaign(subject, body, filters, extra_context,
                                dedupe_users=dedupe_users)
     return JsonResponse(result)
+
+
+@staff_required
+def resend_compose(request, pk):
+    """
+    Show a review-and-resend page pre-filled from an existing campaign.
+    POST creates a new campaign and dispatches it.
+    """
+    source = get_object_or_404(NotificationCampaign, pk=pk)
+    snapshot = source.filters_snapshot or {}
+
+    if request.method == "POST":
+        subject = request.POST.get("subject", "").strip()
+        body = request.POST.get("body", "").strip()
+        sender = request.POST.get("sender", "")
+        reply_to = request.POST.get("reply_to", "")
+
+        if not subject or not body:
+            messages.error(request, "Subject and body are required.")
+            return redirect("notifications:resend-compose", pk=pk)
+
+        campaign = NotificationCampaign.objects.create(
+            template=source.template,
+            subject=subject,
+            body=body,
+            sender=sender,
+            reply_to=reply_to,
+            status=NotificationCampaign.STATUS_QUEUED,
+            filters_snapshot=snapshot,
+            extra_context=source.extra_context or {},
+            recipient_count=0,
+            created_by=request.user,
+        )
+        _dispatch_send(campaign.pk)
+        messages.info(request, "Resend queued — sending in progress.")
+        return redirect("notifications:campaign-detail", pk=campaign.pk)
+
+    return render(request, "resend_compose.html", {
+        "source": source,
+        "snapshot": snapshot,
+        "snapshot_json": json.dumps(snapshot),
+        "senders": SenderConfig.objects.all(),
+    })

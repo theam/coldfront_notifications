@@ -1,0 +1,491 @@
+{% extends "common/base.html" %}
+{% load static %}
+{% block title %}Resend Notification #{{ source.pk }} | FAS Research Computing{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{% static 'coldfront_notifications/css/compose.css' %}">
+
+<div class="mb-3">
+  <h2>
+    Resend Notification
+    <small class="text-muted" style="font-size:.6em;">#{{ source.pk }}</small>
+  </h2>
+  <hr>
+</div>
+
+<div class="row">
+
+  <!-- LEFT: review & edit -->
+  <div class="col-lg-8">
+    <form method="post" id="resendForm">
+      {% csrf_token %}
+
+      <div class="card mb-3">
+        <div class="card-header">
+          <div class="d-flex justify-content-between align-items-center">
+            <h3 class="h5 mb-0"><i class="fas fa-edit mr-1 text-muted"></i>Review & Edit</h3>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="previewBtn">
+              <i class="fas fa-eye mr-1"></i>Preview
+            </button>
+          </div>
+        </div>
+        <div class="card-body">
+
+          <div class="form-group">
+            <label class="flbl">Subject</label>
+            <input type="text" class="form-control" id="id_subject" name="subject" value="{{ source.subject }}">
+          </div>
+
+          <div class="form-row">
+            <div class="form-group col-md-5">
+              <label class="flbl">From</label>
+              <select class="form-control" id="id_sender" name="sender">
+                {% for s in senders %}
+                <option value="{{ s.email }}" {% if s.email == source.sender %}selected{% endif %}>
+                  {{ s.label }} &lt;{{ s.email }}&gt;
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-group col-md-5">
+              <label class="flbl">Reply-To</label>
+              <select class="form-control" id="id_reply_to" name="reply_to">
+                <option value="">--</option>
+                {% for s in senders %}
+                <option value="{{ s.email }}" {% if s.email == source.reply_to %}selected{% endif %}>
+                  {{ s.label }} &lt;{{ s.email }}&gt;
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group mb-0">
+            <label class="flbl">Body</label>
+            <textarea class="form-control" id="id_body" name="body" rows="14"
+                      style="font-family:monospace;font-size:.84rem;line-height:1.6;">{{ source.body }}</textarea>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Validation + Send bar -->
+      <div class="card">
+        <div class="card-body" style="padding:14px 16px;">
+          <div id="validateBanner" style="display:none;margin-bottom:12px;"></div>
+          <div class="d-flex justify-content-between align-items-center">
+            <div style="display:flex;gap:8px;align-items:center;">
+              <a href="{% url 'notifications:campaign-detail' source.pk %}" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-arrow-left mr-1"></i>Back
+              </a>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="previewRecipBtn">
+                <i class="fas fa-eye mr-1"></i>Recipient Preview
+              </button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button type="button" class="btn btn-outline-secondary" id="recalcBtn">
+                <i class="fas fa-check-double mr-1"></i>Validate
+              </button>
+              <button type="submit" class="btn btn-primary" id="sendBtn">
+                <i class="fas fa-paper-plane mr-1"></i>Send
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </form>
+  </div>
+
+  <!-- RIGHT: original campaign info (read-only) -->
+  <div class="col-lg-4">
+
+    <div class="card mb-3">
+      <div class="card-header"><h5 class="h6 mb-0">Original Campaign</h5></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0" style="font-size:.82rem;">
+          <tr>
+            <td class="font-weight-bold text-muted" style="width:100px;">Status</td>
+            <td>{{ source.get_status_display }}</td>
+          </tr>
+          <tr>
+            <td class="font-weight-bold text-muted">Template</td>
+            <td>
+              {% if source.template %}
+                <span class="badge badge-secondary" style="font-family:monospace;">{{ source.template.slug }}</span>
+              {% else %}--{% endif %}
+            </td>
+          </tr>
+          <tr>
+            <td class="font-weight-bold text-muted">Sent At</td>
+            <td>{{ source.sent_at|date:"Y-m-d H:i:s"|default:"--" }}</td>
+          </tr>
+          <tr>
+            <td class="font-weight-bold text-muted">Recipients</td>
+            <td>{{ source.recipient_count }}</td>
+          </tr>
+          <tr>
+            <td class="font-weight-bold text-muted">Delivered</td>
+            <td><span class="text-success">{{ source.delivered_count }}</span></td>
+          </tr>
+          <tr>
+            <td class="font-weight-bold text-muted">Failed</td>
+            <td>
+              {% if source.failed_count %}<span class="text-danger">{{ source.failed_count }}</span>
+              {% else %}0{% endif %}
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <div class="card mb-3">
+      <div class="card-header"><h5 class="h6 mb-0">Filters (from original)</h5></div>
+      <div class="card-body" style="word-break:break-word;">
+        {% for f in source.filter_summary %}
+          <span class="badge badge-light border text-dark mb-1" style="font-size:.75rem;">{{ f }}</span>
+        {% empty %}
+          <em class="text-muted" style="font-size:.82rem;">None -- all users matched</em>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="alert alert-info" style="font-size:.82rem;">
+      <i class="fas fa-info-circle mr-1"></i>
+      This will create a <strong>new campaign</strong> using the same filters and recipients as the original.
+      You can edit the subject and body before sending.
+    </div>
+
+  </div>
+
+</div>
+
+<!-- MODAL: Email Preview -->
+<div class="modal fade" id="previewModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-eye mr-2"></i>Email Preview</h5>
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-between align-items-center mb-2" style="font-size:.82rem;">
+          <div>
+            <strong>Rendering for:</strong>
+            <select id="prev-recipient-picker" class="form-control form-control-sm d-inline-block ml-2"
+                    style="width:auto;min-width:280px;"></select>
+          </div>
+          <small class="text-muted" id="prev-scope-badge"></small>
+        </div>
+        <table class="table table-sm table-borderless mb-2" style="font-size:.82rem;">
+          <tr><td style="width:75px;font-weight:600;color:#6c757d;">From</td>     <td id="prev-from"></td></tr>
+          <tr><td style="font-weight:600;color:#6c757d;">Reply-To</td>            <td id="prev-replyto"></td></tr>
+          <tr><td style="font-weight:600;color:#6c757d;">To</td>                  <td id="prev-to"></td></tr>
+          <tr><td style="font-weight:600;color:#6c757d;">Subject</td>             <td id="prev-subject"></td></tr>
+        </table>
+        <div id="prev-error" class="alert alert-warning py-2" style="font-size:.78rem;display:none;"></div>
+        <hr class="my-2">
+        <pre style="background:#fffef8;border:1px solid #e2d9b8;border-radius:4px;padding:14px;font-size:.84rem;white-space:pre-wrap;max-height:320px;overflow-y:auto;" id="prev-body"></pre>
+      </div>
+      <div class="modal-footer">
+        <small class="text-muted mr-auto" id="prev-footer">--</small>
+        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Recipient Preview -->
+<div class="modal fade" id="recipModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-users mr-2"></i>Recipient Preview</h5>
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+      </div>
+      <div class="modal-body p-0">
+        <div class="recip-topbar">
+          <span>
+            <i class="fas fa-info-circle mr-1"></i>
+            Recipients that will receive this resend.
+          </span>
+          <input type="text" id="recipSearch" class="form-control form-control-sm recip-search"
+                 placeholder="Search name, email, project...">
+        </div>
+        <div class="recip-table-wrap">
+          <table class="table table-sm mb-0">
+            <thead class="thead-light">
+              <tr>
+                <th>Name</th><th>Email</th><th>Role</th><th>Project</th><th>Allocation</th>
+              </tr>
+            </thead>
+            <tbody id="recipRows">
+              <tr><td colspan="5" class="text-center text-muted py-3">
+                <i class="fas fa-spinner fa-spin mr-1"></i>Loading...
+              </td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="recip-toolbar">
+        <div class="recip-toolbar-left">
+          <span id="recipModalCount"></span>
+          <span class="badge badge-info ml-2" id="recipModalScope" style="display:none;"></span>
+        </div>
+        <div class="recip-toolbar-center" id="recipPagination">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="recipFirstBtn" disabled>
+            <i class="fas fa-angle-double-left"></i>
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="recipPrevBtn" disabled>
+            <i class="fas fa-chevron-left"></i>
+          </button>
+          <span class="recip-page-info" id="recipPageInfo">Page 1 of 1</span>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="recipNextBtn" disabled>
+            <i class="fas fa-chevron-right"></i>
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="recipLastBtn" disabled>
+            <i class="fas fa-angle-double-right"></i>
+          </button>
+        </div>
+        <div class="recip-toolbar-right">
+          <label class="recip-page-size-label">
+            Show
+            <select id="recipPageSize" class="form-control form-control-sm recip-page-size-select">
+              <option value="10" selected>10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            per page
+          </label>
+          <button type="button" class="btn btn-secondary btn-sm ml-3" data-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block javascript %}
+<script>
+var SNAPSHOT = {{ snapshot_json|safe }};
+var URLS = {
+  previewRender:  '{% url "notifications:preview-render" %}',
+  recipientCount: '{% url "notifications:recipient-count" %}',
+  validate:       '{% url "notifications:validate" %}'
+};
+</script>
+<script>
+(function() {
+  var csrfToken = $('input[name=csrfmiddlewaretoken]').val();
+
+  // ── Filters from the original campaign snapshot ──────────────────
+  function snapshotFilters() { return SNAPSHOT; }
+  function snapshotFilterList(key) { return (SNAPSHOT[key] || []); }
+
+  // ── Validate ─────────────────────────────────────────────────────
+  $(document).on('click', '#recalcBtn', function() {
+    var $btn = $(this);
+    $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin mr-1"></i>Validating...');
+
+    $.ajax({
+      url: URLS.validate, type: 'POST',
+      data: {
+        csrfmiddlewaretoken: csrfToken,
+        subject: $('#id_subject').val() || '',
+        body: $('#id_body').val() || '',
+        filters: JSON.stringify(snapshotFilters()),
+        extra_context: JSON.stringify({}),
+        dedupe_users: JSON.stringify([]),
+      },
+      success: function(data) {
+        var errs = data.errors || [];
+        var miss = data.missing_tokens || [];
+        var emails = data.email_count || 0;
+        var $banner = $('#validateBanner');
+        if (miss.length || errs.length) {
+          var html = '';
+          if (miss.length) {
+            var tokens = miss.map(function(t) { return '<code>{% templatetag openvariable %}' + t + '{% templatetag closevariable %}</code>'; }).join(', ');
+            html += '<div class="alert alert-danger py-2 mb-2" style="font-size:.84rem;">'
+              + '<i class="fas fa-exclamation-triangle mr-1"></i>'
+              + '<strong>' + miss.length + ' unknown token(s):</strong> ' + tokens + '</div>';
+          }
+          if (errs.length) {
+            html += '<div class="alert alert-warning py-2 mb-0" style="font-size:.84rem;">'
+              + '<i class="fas fa-exclamation-circle mr-1"></i>'
+              + '<strong>' + errs.length + ' resolution error(s)</strong> — '
+              + 'some variables could not be resolved for all recipients.</div>';
+          }
+          $banner.html(html).show();
+          $btn.removeClass('btn-outline-secondary btn-success').addClass('btn-danger')
+              .html('<i class="fas fa-times-circle mr-1"></i>Errors found');
+        } else {
+          $banner.hide();
+          $btn.removeClass('btn-outline-secondary btn-danger').addClass('btn-success')
+              .html('<i class="fas fa-check-circle mr-1"></i>' + emails + ' emails OK');
+        }
+      },
+      error: function() {
+        $('#validateBanner').hide();
+        $btn.removeClass('btn-outline-secondary btn-success').addClass('btn-danger')
+            .html('<i class="fas fa-times-circle mr-1"></i>Validation failed');
+      },
+      complete: function() { $btn.prop('disabled', false); }
+    });
+  });
+
+  // ── Email Preview modal ──────────────────────────────────────────
+  var PREVIEW_SAMPLES = [];
+
+  function renderPreviewSample(idx) {
+    var s = PREVIEW_SAMPLES[idx];
+    if (!s) {
+      $('#prev-to').text('--');
+      $('#prev-subject').text($('#id_subject').val() || '--');
+      $('#prev-body').text($('#id_body').val() || '--');
+      $('#prev-error').hide();
+      $('#prev-footer').text('Showing template with literal placeholders');
+      return;
+    }
+    $('#prev-to').text((s.recipient.name || s.recipient.username) + ' <' + s.recipient.email + '>');
+    $('#prev-subject').text(s.subject || '--');
+    $('#prev-body').text(s.body || '--');
+    if (s.error) { $('#prev-error').text('Resolution error: ' + s.error).show(); }
+    else { $('#prev-error').hide(); }
+    var ctx = [];
+    if (s.recipient.project) ctx.push('project: ' + s.recipient.project);
+    if (s.recipient.allocation) ctx.push('allocation: ' + s.recipient.allocation);
+    $('#prev-footer').text(ctx.join(' · ') || 'recipient-only context');
+  }
+
+  $(document).on('click', '#previewBtn', function() {
+    $('#prev-from').text($('#id_sender').val());
+    $('#prev-replyto').text($('#id_reply_to').val());
+    PREVIEW_SAMPLES = [];
+    $('#prev-recipient-picker').html('<option value="">-- Template (raw placeholders) --</option>'
+      + '<option disabled>Loading samples...</option>');
+    renderPreviewSample(null);
+    $('#prev-scope-badge').text('');
+    $('#previewModal').modal('show');
+
+    $.ajax({
+      url: URLS.previewRender, type: 'POST',
+      data: {
+        csrfmiddlewaretoken: csrfToken,
+        subject: $('#id_subject').val() || '',
+        body: $('#id_body').val() || '',
+        filters: JSON.stringify(snapshotFilters()),
+        dedupe_users: JSON.stringify([]),
+      },
+      success: function(data) {
+        PREVIEW_SAMPLES = data.samples || [];
+        var opts = ['<option value="">-- Template (raw placeholders) --</option>'];
+        PREVIEW_SAMPLES.forEach(function(s, i) {
+          var lbl = (s.recipient.name || s.recipient.username) + ' <' + s.recipient.email + '>';
+          if (s.recipient.project) lbl += ' · ' + s.recipient.project;
+          opts.push('<option value="' + i + '">' + lbl + '</option>');
+        });
+        if (!PREVIEW_SAMPLES.length) opts.push('<option disabled>(no matching recipients)</option>');
+        $('#prev-recipient-picker').html(opts.join(''));
+        if (data.scope) $('#prev-scope-badge').text('scope: ' + data.scope + ' · ' + (data.total_emails || 0) + ' total');
+        if (PREVIEW_SAMPLES.length) { $('#prev-recipient-picker').val('0'); renderPreviewSample(0); }
+        else { renderPreviewSample(null); }
+      },
+      error: function() {
+        $('#prev-recipient-picker').html('<option value="">-- Template (raw placeholders) --</option>');
+        $('#prev-footer').text('Preview failed to load');
+      },
+    });
+  });
+
+  $(document).on('change', '#prev-recipient-picker', function() {
+    var v = $(this).val();
+    renderPreviewSample(v === '' ? null : parseInt(v, 10));
+  });
+
+  // ── Recipient Preview modal ──────────────────────────────────────
+  var PREVIEW_ROWS = [], PREVIEW_SCOPE = null, PREVIEW_PAGE = 1, PREVIEW_TOTAL_PAGES = 1;
+
+  function getPageSize() { return parseInt($('#recipPageSize').val(), 10) || 10; }
+
+  function updatePaginationControls() {
+    var atFirst = PREVIEW_PAGE <= 1, atLast = PREVIEW_PAGE >= PREVIEW_TOTAL_PAGES;
+    $('#recipPageInfo').text('Page ' + PREVIEW_PAGE + ' of ' + PREVIEW_TOTAL_PAGES);
+    $('#recipFirstBtn').prop('disabled', atFirst);
+    $('#recipPrevBtn').prop('disabled', atFirst);
+    $('#recipNextBtn').prop('disabled', atLast);
+    $('#recipLastBtn').prop('disabled', atLast);
+  }
+
+  function renderRecipRows() {
+    var html = '';
+    PREVIEW_ROWS.forEach(function(r) {
+      html += '<tr>'
+        + '<td>' + (r.full_name || '') + '</td>'
+        + '<td style="font-family:monospace;font-size:.78rem;">' + (r.email || '') + '</td>'
+        + '<td>' + (r.role || '') + '</td>'
+        + '<td>' + (r.project || '') + '</td>'
+        + '<td style="font-size:.78rem;">' + (r.allocation || '') + '</td>'
+        + '</tr>';
+    });
+    $('#recipRows').html(html || '<tr><td colspan="5" class="text-center text-muted py-3">No recipients matched.</td></tr>');
+
+    var scopeLbl = PREVIEW_SCOPE ? 'scope: ' + PREVIEW_SCOPE : '';
+    $('#recipModalCount').text(PREVIEW_ROWS.length + ' on this page');
+    if (PREVIEW_SCOPE) { $('#recipModalScope').text(scopeLbl).show(); } else { $('#recipModalScope').hide(); }
+  }
+
+  function fetchPreviewPage(page) {
+    PREVIEW_PAGE = page || 1;
+    $('#recipSearch').val('');
+    $('#recipRows').html('<tr><td colspan="5" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin mr-1"></i>Loading...</td></tr>');
+
+    $.ajax({
+      url: URLS.recipientCount, type: 'POST',
+      data: {
+        csrfmiddlewaretoken: csrfToken,
+        projects: snapshotFilterList('projects'),
+        allocations: snapshotFilterList('allocations'),
+        departments: snapshotFilterList('departments'),
+        resources: snapshotFilterList('resources'),
+        alloc_status: snapshotFilterList('statuses'),
+        roles: snapshotFilterList('roles'),
+        subject: $('#id_subject').val() || '',
+        body: $('#id_body').val() || '',
+        dedupe_users: JSON.stringify([]),
+        preview: 'true',
+        page: PREVIEW_PAGE,
+        page_size: getPageSize(),
+      },
+      traditional: true,
+      success: function(data) {
+        PREVIEW_ROWS = data.recipients || [];
+        PREVIEW_SCOPE = data.scope || null;
+        PREVIEW_TOTAL_PAGES = data.total_pages || 1;
+        PREVIEW_PAGE = data.page || 1;
+        renderRecipRows();
+        updatePaginationControls();
+      },
+      error: function() {
+        $('#recipRows').html('<tr><td colspan="5" class="text-center text-danger py-3">Failed to load.</td></tr>');
+      }
+    });
+  }
+
+  $(document).on('click', '#previewRecipBtn', function() { $('#recipModal').modal('show'); fetchPreviewPage(1); });
+  $(document).on('click', '#recipFirstBtn', function() { if (PREVIEW_PAGE > 1) fetchPreviewPage(1); });
+  $(document).on('click', '#recipPrevBtn', function() { if (PREVIEW_PAGE > 1) fetchPreviewPage(PREVIEW_PAGE - 1); });
+  $(document).on('click', '#recipNextBtn', function() { if (PREVIEW_PAGE < PREVIEW_TOTAL_PAGES) fetchPreviewPage(PREVIEW_PAGE + 1); });
+  $(document).on('click', '#recipLastBtn', function() { if (PREVIEW_PAGE < PREVIEW_TOTAL_PAGES) fetchPreviewPage(PREVIEW_TOTAL_PAGES); });
+  $(document).on('change', '#recipPageSize', function() { fetchPreviewPage(1); });
+
+  $(document).on('input', '#recipSearch', function() {
+    var q = $(this).val().toLowerCase();
+    $('#recipRows tr').each(function() { $(this).toggle(!q || $(this).text().toLowerCase().indexOf(q) !== -1); });
+  });
+
+})();
+</script>
+{% endblock %}

@@ -148,8 +148,9 @@ def enumerate_recipients(filters: dict, scope: str):
         return
 
     pu_qs = _apply_project_filters(
-        ProjectUser.objects.select_related("user", "project", "project__pi", "project__status", "role")
-                            .filter(status__name="Active"),
+        ProjectUser.objects
+        .select_related("user", "project", "project__pi", "project__status", "role")
+        .filter(status__name="Active"),
         filters,
     ).order_by("user_id", "project_id", "pk")
 

@@ -10,8 +10,10 @@ class NotificationVariableForm(forms.ModelForm):
 
     resolver_key = forms.ChoiceField(
         required=False,
-        choices=[("", "— choose a query source —")]
-               + [(k, f"{group}: {label}") for (k, label, group) in QUERY_CHOICES],
+        choices=(
+            [("", "— choose a query source —")]
+            + [(k, f"{group}: {label}") for (k, label, group) in QUERY_CHOICES]
+        ),
         widget=forms.Select(attrs={"class": "form-control"}),
     )
 
@@ -102,9 +104,9 @@ class ComposeForm(forms.Form):
     )
 
     # recipient filters — all MultipleChoiceField, choices injected in __init__
-    filter_projects   = forms.MultipleChoiceField(required=False)
-    filter_allocations= forms.MultipleChoiceField(required=False)
-    filter_departments= forms.MultipleChoiceField(required=False)
+    filter_projects = forms.MultipleChoiceField(required=False)
+    filter_allocations = forms.MultipleChoiceField(required=False)
+    filter_departments = forms.MultipleChoiceField(required=False)
     filter_resources  = forms.MultipleChoiceField(required=False)
     filter_statuses   = forms.MultipleChoiceField(required=False)
     filter_roles      = forms.MultipleChoiceField(required=False)

@@ -64,21 +64,21 @@ def _project_role(user, project):
 
 QUERY_RESOLVERS = {
     # Recipient (user)
-    "user.username":   lambda c: _fmt(_need(c, "user").username),
-    "user.email":      lambda c: _fmt(_need(c, "user").email),
-    "user.full_name":  lambda c: _fmt(_need(c, "user").get_full_name() or _need(c, "user").username),
+    "user.username": lambda c: _fmt(_need(c, "user").username),
+    "user.email": lambda c: _fmt(_need(c, "user").email),
+    "user.full_name": lambda c: _fmt(_need(c, "user").get_full_name() or _need(c, "user").username),
     "user.first_name": lambda c: _fmt(_need(c, "user").first_name),
-    "user.last_name":  lambda c: _fmt(_need(c, "user").last_name),
-    "user.ifxid":      lambda c: _fmt(getattr(_need(c, "user"), "ifxid", None)),
+    "user.last_name": lambda c: _fmt(_need(c, "user").last_name),
+    "user.ifxid": lambda c: _fmt(getattr(_need(c, "user"), "ifxid", None)),
 
     # Project
-    "project.title":                        lambda c: _fmt(_need(c, "project").title),
-    "project.description":                  lambda c: _fmt(_need(c, "project").description),
-    "project.status.name":                  lambda c: _fmt(_need(c, "project").status.name),
+    "project.title": lambda c: _fmt(_need(c, "project").title),
+    "project.description": lambda c: _fmt(_need(c, "project").description),
+    "project.status.name": lambda c: _fmt(_need(c, "project").status.name),
     "project.field_of_science.description": lambda c: _fmt(
         _need(c, "project").field_of_science.description if _need(c, "project").field_of_science_id else None
     ),
-    "project.parent_project.title":         lambda c: _fmt(
+    "project.parent_project.title": lambda c: _fmt(
         _need(c, "project").parent_project.title if _need(c, "project").parent_project_id else None
     ),
 
@@ -86,8 +86,8 @@ QUERY_RESOLVERS = {
     "project.pi.full_name": lambda c: _fmt(
         _need(c, "project").pi.get_full_name() or _need(c, "project").pi.username if _need(c, "project").pi_id else None
     ),
-    "project.pi.email":     lambda c: _fmt(_need(c, "project").pi.email if _need(c, "project").pi_id else None),
-    "project.pi.username":  lambda c: _fmt(_need(c, "project").pi.username if _need(c, "project").pi_id else None),
+    "project.pi.email": lambda c: _fmt(_need(c, "project").pi.email if _need(c, "project").pi_id else None),
+    "project.pi.username": lambda c: _fmt(_need(c, "project").pi.username if _need(c, "project").pi_id else None),
 
     # Department (via ProjectOrganization)
     "project.department.name": lambda c: _fmt(_dept_name(_need(c, "project"))),
@@ -96,17 +96,17 @@ QUERY_RESOLVERS = {
     "projectuser.role.name": lambda c: _fmt(_project_role(_need(c, "user"), _need(c, "project"))),
 
     # Allocation
-    "allocation.id":            lambda c: _fmt(_need(c, "allocation").pk),
-    "allocation.description":   lambda c: _fmt(_need(c, "allocation").description),
+    "allocation.id": lambda c: _fmt(_need(c, "allocation").pk),
+    "allocation.description": lambda c: _fmt(_need(c, "allocation").description),
     "allocation.justification": lambda c: _fmt(_need(c, "allocation").justification),
-    "allocation.quantity":      lambda c: _fmt(_need(c, "allocation").quantity),
-    "allocation.start_date":    lambda c: _fmt(_need(c, "allocation").start_date),
-    "allocation.end_date":      lambda c: _fmt(_need(c, "allocation").end_date),
-    "allocation.status.name":   lambda c: _fmt(_need(c, "allocation").status.name),
+    "allocation.quantity": lambda c: _fmt(_need(c, "allocation").quantity),
+    "allocation.start_date": lambda c: _fmt(_need(c, "allocation").start_date),
+    "allocation.end_date": lambda c: _fmt(_need(c, "allocation").end_date),
+    "allocation.status.name": lambda c: _fmt(_need(c, "allocation").status.name),
 
     # Resource (primary on matched allocation)
-    "resource.name":               lambda c: _fmt(getattr(_primary_resource(_need(c, "allocation")), "name", None)),
-    "resource.description":        lambda c: _fmt(getattr(_primary_resource(_need(c, "allocation")), "description", None)),
+    "resource.name": lambda c: _fmt(getattr(_primary_resource(_need(c, "allocation")), "name", None)),
+    "resource.description": lambda c: _fmt(getattr(_primary_resource(_need(c, "allocation")), "description", None)),
     "resource.resource_type.name": lambda c: _fmt(
         (_primary_resource(_need(c, "allocation")).resource_type.name
          if _primary_resource(_need(c, "allocation")) and _primary_resource(_need(c, "allocation")).resource_type_id
@@ -172,6 +172,7 @@ def _scope_for(key):
     if key.startswith("project.") or key.startswith("projectuser."):
         return "project"
     return "user"
+
 
 QUERY_SCOPES = {k: _scope_for(k) for k, _label, _group in QUERY_CHOICES}
 

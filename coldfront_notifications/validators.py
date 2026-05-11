@@ -18,8 +18,8 @@ Campaign is sendable iff errors == [] and missing_tokens == [].
 import re
 from collections import Counter
 
-from .resolvers import QUERY_RESOLVERS, QUERY_SCOPES, MissingValue, resolve
-from .utils import enumerate_recipients, enumerate_recipients_deduped
+from .resolvers import QUERY_SCOPES, MissingValue, resolve
+from .utils import enumerate_recipients_deduped
 
 TOKEN_RE = re.compile(r"\{\{(\w+)\}\}")
 

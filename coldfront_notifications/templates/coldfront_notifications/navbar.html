@@ -1,0 +1,29 @@
+{% if user.is_staff or user.is_superuser %}
+<li id="navbar-notifications" class="nav-item dropdown">
+  <a class="nav-link dropdown-toggle" href="#" data-toggle="dropdown">
+    Notifications
+  </a>
+  <div class="dropdown-menu">
+    <a class="dropdown-item" href="{% url 'notifications:dashboard' %}">
+      Dashboard
+    </a>
+    <a class="dropdown-item" href="{% url 'notifications:campaign-list' %}">
+      Notifications
+    </a>
+    <a class="dropdown-item" href="{% url 'notifications:compose' %}">
+      Compose Notification
+    </a>
+    <div class="dropdown-divider"></div>
+    <a class="dropdown-item" href="{% url 'notifications:template-list' %}">
+      Templates
+    </a>
+    <a class="dropdown-item" href="{% url 'notifications:variable-list' %}">
+      Template Variables
+    </a>
+    <div class="dropdown-divider"></div>
+    <a class="dropdown-item" href="{% url 'notifications:settings' %}">
+      Settings
+    </a>
+  </div>
+</li>
+{% endif %}

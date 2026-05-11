@@ -18,8 +18,10 @@ class NotificationVariableForm(forms.ModelForm):
     """
     resolver_key = forms.ChoiceField(
         required=False,
-        choices=[("", "— choose a query path —")]
-               + [(k, f"{group}: {label}") for (k, label, group) in QUERY_CHOICES],
+        choices=(
+            [("", "— choose a query path —")]
+            + [(k, f"{group}: {label}") for (k, label, group) in QUERY_CHOICES]
+        ),
         help_text="Only used when Source = Query.",
     )
 

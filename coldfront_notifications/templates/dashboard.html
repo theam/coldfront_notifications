@@ -92,7 +92,7 @@
               <td style="font-size:.8rem;font-family:monospace;">{{ campaign.sender }}</td>
               <td class="text-right" style="font-family:monospace;">{{ campaign.recipient_count }}</td>
               <td style="font-size:.8rem;">{{ campaign.sent_at|date:"Y-m-d H:i"|default:"—" }}</td>
-              <td>
+              <td data-order="{% if campaign.status == 'failed' %}0{% elif campaign.status == 'partial' %}1{% elif campaign.status == 'sending' %}2{% elif campaign.status == 'queued' %}3{% elif campaign.status == 'draft' %}4{% else %}5{% endif %}">
                 {% if campaign.status == 'sent' %}
                   <span class="badge badge-success">Sent</span>
                 {% elif campaign.status == 'sending' %}
@@ -131,7 +131,7 @@
 
 {% block javascript %}
 <script>
-var DT_CONFIG = { tableId: 'campaignsTable', order: [[4, 'desc']], nonOrderableTargets: [5], paging: false, searching: false, info: false };
+var DT_CONFIG = { tableId: 'campaignsTable', order: [[5, 'asc'], [4, 'desc']], paging: false, searching: false, info: false };
 </script>
 <script src="{% static 'coldfront_notifications/js/datatables_init.js' %}"></script>
 {% endblock %}
