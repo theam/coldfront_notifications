@@ -158,10 +158,11 @@ def compute_filter_options(selections):
                 for pk, title in qs.order_by("title").values_list("pk", "title")]
 
     def _allocation_options(qs):
-        return [{"id": pk, "label": f"{proj} — {res or ''}"}
-                for pk, proj, res in qs.distinct()
-                .order_by("project__title", "pk")
-                .values_list("pk", "project__title", "resources__name")]
+        # Model hydration needed here: get_parent_resource collapses the M2M
+        # into a single label. values_list across M2M produces duplicate rows.
+        return [{"id": a.pk, "label": f"{a.project.title} — {a.get_parent_resource or ''}"}
+                for a in qs.select_related("project").distinct()
+                .order_by("project__title", "pk")]
 
     def _resource_options(qs):
         return [{"id": pk, "label": name}

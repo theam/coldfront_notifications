@@ -11,7 +11,7 @@
 /* recipients: row 2 — actions | inline summary | count pill */
 .recip-actions {
   display: flex; align-items: center; gap: 10px;
-  margin-top: 14px; padding-top: 12px;
+  margin-top: 20px; padding-top: 14px;
   border-top: 1px solid #eef0f3;
 }
 .recip-actions-left {
@@ -21,6 +21,7 @@
   flex: 1; min-width: 0; overflow: hidden; white-space: nowrap;
   font-size: .75rem; color: #6c757d;
   display: flex; align-items: center; gap: 4px;
+  margin-left: 14px;
 }
 .recip-inline-summary .ris-chip {
   display: inline-block; background: #f4f6f9; border: 1px solid #dee2e8;

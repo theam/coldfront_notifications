@@ -27,22 +27,13 @@
   </div>
   <div class="collapse show" id="recipients-body">
     <div class="card-body">
-      <!-- Row 1: filters -->
+      <!-- Row 1: filters (ordered by tier: T1 → T2 → T3) -->
       <div class="recip-filters">
         <div>
           <label class="flbl">Project <i class="fas fa-info-circle text-muted filter-info" data-filter="projects" title=""></i></label>
           <select class="s2" id="f_project" multiple data-placeholder="Any project">
             {% for p in projects %}
             <option value="{{ p.pk }}">{{ p.title }}</option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div>
-          <label class="flbl">Allocation <i class="fas fa-info-circle text-muted filter-info" data-filter="allocations" title=""></i></label>
-          <select class="s2" id="f_allocation" multiple data-placeholder="Any allocation">
-            {% for a in allocations %}
-            <option value="{{ a.pk }}">{{ a.project.title }} — {{ a.get_parent_resource }}</option>
             {% endfor %}
           </select>
         </div>
@@ -70,6 +61,15 @@
           <select class="s2" id="f_status" multiple data-placeholder="Any status">
             {% for s in statuses %}
             <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div>
+          <label class="flbl">Allocation <i class="fas fa-info-circle text-muted filter-info" data-filter="allocations" title=""></i></label>
+          <select class="s2" id="f_allocation" multiple data-placeholder="Any allocation">
+            {% for a in allocations %}
+            <option value="{{ a.pk }}">{{ a.project.title }} — {{ a.get_parent_resource }}</option>
             {% endfor %}
           </select>
         </div>
