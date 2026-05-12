@@ -140,7 +140,7 @@ def compute_filter_options(selections):
     Each filter excludes its own selection (no self-narrowing) but considers
     every other active selection.  Returns a dict ready for JsonResponse.
     """
-    from coldfront.core.project.models import Project, ProjectUser, ProjectUserRoleChoice
+    from coldfront.core.project.models import Project, ProjectUserRoleChoice
     from coldfront.core.allocation.models import Allocation, AllocationStatusChoice
     from coldfront.core.resource.models import Resource
     from ifxuser.models import Organization
@@ -154,16 +154,18 @@ def compute_filter_options(selections):
 
     # ── Helpers ──────────────────────────────────────────────────────
     def _project_options(qs):
-        return [{"id": p.pk, "label": p.title} for p in qs.order_by("title")]
+        return [{"id": pk, "label": title}
+                for pk, title in qs.order_by("title").values_list("pk", "title")]
 
     def _allocation_options(qs):
-        return [
-            {"id": a.pk, "label": f"{a.project.title} — {a.get_parent_resource or ''}"}
-            for a in qs.select_related("project").distinct().order_by("project__title", "pk")
-        ]
+        return [{"id": pk, "label": f"{proj} — {res or ''}"}
+                for pk, proj, res in qs.distinct()
+                .order_by("project__title", "pk")
+                .values_list("pk", "project__title", "resources__name")]
 
     def _resource_options(qs):
-        return [{"id": r.pk, "label": r.name} for r in qs.order_by("name")]
+        return [{"id": pk, "label": name}
+                for pk, name in qs.order_by("name").values_list("pk", "name")]
 
     def _department_options(names):
         return [{"id": n, "label": n} for n in sorted(set(names))]
@@ -175,23 +177,20 @@ def compute_filter_options(selections):
         valid = {o["id"] for o in options}
         return [s for s in selected if s in valid]
 
-    # ── Full (unfiltered) sets — for "no narrowing" detection ────────
-    all_projects_qs    = Project.objects.all()
-    all_allocations_qs = Allocation.objects.select_related("project").all()
-    all_resources_qs   = Resource.objects.all()
-    all_dept_names     = list(
-        Organization.objects.filter(rank="department")
-        .values_list("name", flat=True).distinct()
-    )
-    all_status_names = list(
-        AllocationStatusChoice.objects.values_list("name", flat=True)
-    )
-    all_role_names = list(
-        ProjectUserRoleChoice.objects.values_list("name", flat=True)
-    )
+    # ── Full counts — small lookup tables, fetched once for
+    #    "no narrowing" detection. No full queryset materialized. ─────
+    full_counts = {
+        "projects":    Project.objects.count(),
+        "allocations": Allocation.objects.distinct().count(),
+        "resources":   Resource.objects.count(),
+        "departments": (Organization.objects.filter(rank="department")
+                        .values("name").distinct().count()),
+        "statuses":    AllocationStatusChoice.objects.count(),
+        "roles":       ProjectUserRoleChoice.objects.count(),
+    }
 
     # ── Tier 1: project <-> department (mutual peers) ────────────────
-    proj_opts_qs = all_projects_qs
+    proj_opts_qs = Project.objects.all()
     if sel_departments:
         proj_opts_qs = proj_opts_qs.filter(
             projectorganization__organization__rank="department",
@@ -199,7 +198,7 @@ def compute_filter_options(selections):
         )
     projects_opts = _project_options(proj_opts_qs)
 
-    dept_scope_qs = all_projects_qs
+    dept_scope_qs = Project.objects.all()
     if sel_projects:
         dept_scope_qs = dept_scope_qs.filter(pk__in=sel_projects)
     dept_names = list(Organization.objects.filter(
@@ -209,7 +208,7 @@ def compute_filter_options(selections):
     departments_opts = _department_options(dept_names)
 
     # Full project scope (both selections applied) for Tier 2.
-    project_scope = all_projects_qs
+    project_scope = Project.objects.all()
     if sel_projects:
         project_scope = project_scope.filter(pk__in=sel_projects)
     if sel_departments:
@@ -244,13 +243,11 @@ def compute_filter_options(selections):
     status_names = list(stat_scope.values_list("status__name", flat=True).distinct())
     statuses_opts = _string_options(status_names)
 
-    # Roles: from project scope.
-    role_pks = ProjectUser.objects.filter(
-        project__in=project_scope
-    ).values_list("role__pk", flat=True).distinct()
+    # Roles: from project scope (single query with join).
     role_names = list(
-        ProjectUserRoleChoice.objects.filter(pk__in=role_pks)
-        .values_list("name", flat=True)
+        ProjectUserRoleChoice.objects.filter(
+            projectuser__project__in=project_scope
+        ).values_list("name", flat=True).distinct()
     )
     roles_opts = _string_options(role_names)
 
@@ -264,18 +261,24 @@ def compute_filter_options(selections):
         "roles":       _prune(roles_opts, sel_roles),
     }
 
-    # ── Active-filter labels from pruned selections ──────────────────
+    # ── Active-filter labels from already-computed options ────────────
+    # Look up labels from the options lists instead of re-querying the DB.
+    proj_labels = {o["id"]: o["label"] for o in projects_opts}
+    res_labels  = {o["id"]: o["label"] for o in resources_opts}
+    alloc_labels = {o["id"]: o["label"] for o in allocations_opts}
+
     active_filters = {}
     if pruned["projects"]:
-        names = list(all_projects_qs.filter(pk__in=pruned["projects"]).values_list("title", flat=True))
+        names = [proj_labels[pk] for pk in pruned["projects"] if pk in proj_labels]
         if names:
             active_filters["Project"] = names
     if pruned["allocations"]:
-        active_filters["Allocation"] = [str(pk) for pk in pruned["allocations"]]
+        names = [alloc_labels.get(pk, str(pk)) for pk in pruned["allocations"]]
+        active_filters["Allocation"] = names
     if pruned["departments"]:
         active_filters["Department"] = pruned["departments"]
     if pruned["resources"]:
-        names = list(all_resources_qs.filter(pk__in=pruned["resources"]).values_list("name", flat=True))
+        names = [res_labels[pk] for pk in pruned["resources"] if pk in res_labels]
         if names:
             active_filters["Resource"] = names
     if pruned["statuses"]:
@@ -291,14 +294,7 @@ def compute_filter_options(selections):
         active_filters=active_filters,
     )
 
-    full_counts = {
-        "projects":    all_projects_qs.count(),
-        "allocations": all_allocations_qs.distinct().count(),
-        "resources":   all_resources_qs.count(),
-        "departments": len(set(all_dept_names)),
-        "statuses":    len(set(n for n in all_status_names if n)),
-        "roles":       len(set(n for n in all_role_names if n)),
-    }
+    # Clear "filtered_by" when the option count matches the full set.
     for key, s in summaries.items():
         if isinstance(s, dict) and s.get("count", 0) == full_counts.get(key, -1):
             s["filtered_by"] = ""

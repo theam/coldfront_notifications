@@ -210,7 +210,7 @@ def send_notification_campaign(campaign_pk: int):
                 body=body,
                 from_email=campaign.sender,
                 to=[user.email],
-                bcc=bcc_pool or [],
+                bcc=bcc_pool if i == 0 else [],
                 reply_to=[campaign.reply_to] if campaign.reply_to else [],
             )
 

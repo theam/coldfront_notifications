@@ -241,9 +241,10 @@ def recipient_count_view(request):
 
     from coldfront.core.project.models import ProjectUser
 
+    # Two-pass streaming to avoid loading all rows into memory.
+    # Pass 1: count total, collect user_counts + user_info (lightweight).
     user_info = {}
     user_counts = Counter()
-    all_rows = []
     total = 0
 
     for user, project, allocation in enumerate_recipients(filters, scope):
@@ -254,28 +255,34 @@ def recipient_count_view(request):
                 "email": user.email,
                 "full_name": user.get_full_name() or user.username,
             }
-        all_rows.append((user, project, allocation))
         total += 1
 
+    # Clamp page BEFORE computing the slice window.
     total_pages = max(1, (total + page_size - 1) // page_size)
     page = min(page, total_pages)
     want_start = (page - 1) * page_size
     want_end   = want_start + page_size
 
+    # Pass 2: stream again, collect only the page slice.
     page_rows = []
-    for user, project, allocation in all_rows[want_start:want_end]:
-        page_rows.append({
-            "username":      user.username,
-            "full_name":     user.get_full_name() or user.username,
-            "email":         user.email,
-            "user_pk":       user.pk,
-            "project_pk":    project.pk if project else None,
-            "project_title": project.title if project else "",
-            "allocation": (
-                f"{allocation.pk} — {allocation.get_parent_resource}"
-                if allocation else ""
-            ),
-        })
+    idx = 0
+    for user, project, allocation in enumerate_recipients(filters, scope):
+        if idx >= want_end:
+            break
+        if idx >= want_start:
+            page_rows.append({
+                "username":      user.username,
+                "full_name":     user.get_full_name() or user.username,
+                "email":         user.email,
+                "user_pk":       user.pk,
+                "project_pk":    project.pk if project else None,
+                "project_title": project.title if project else "",
+                "allocation": (
+                    f"{allocation.pk} — {allocation.get_parent_resource}"
+                    if allocation else ""
+                ),
+            })
+        idx += 1
 
     if page_rows:
         pairs = [(r["user_pk"], r["project_pk"]) for r in page_rows if r["project_pk"]]
