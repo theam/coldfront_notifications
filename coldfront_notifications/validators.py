@@ -53,7 +53,7 @@ def _required_scope(variables) -> str:
 
 
 def validate_campaign(subject: str, body: str, filters: dict, extra_context: dict,
-                      dedupe_users=None) -> dict:
+                      dedupe_users=None, scope_override=None) -> dict:
     from .models import NotificationVariable
 
     tokens = _extract_tokens(subject, body)
@@ -61,7 +61,7 @@ def validate_campaign(subject: str, body: str, filters: dict, extra_context: dic
 
     missing_tokens = [t for t in tokens if t not in vars_by_key]
     used_vars = [vars_by_key[t] for t in tokens if t in vars_by_key]
-    scope = _required_scope(used_vars)
+    scope = scope_override or _required_scope(used_vars)
 
     errors = []
     user_pks = set()

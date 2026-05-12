@@ -5,7 +5,7 @@ A [ColdFront](https://coldfront.readthedocs.io/) plugin for sending bulk email n
 ## Features
 
 ### Compose & Send
-- **Cascading recipient filters** — filter by Project, Department, Allocation, Resource, Allocation Status, and User Role. Each filter narrows the downstream options in real time.
+- **Cascading recipient filters** — filter by Project, Department, Allocation, Resource, Allocation Status, and User Role. Filters cross-narrow each other in real time via a single backend computation per change. See [FILTERS.md](FILTERS.md) for the full architecture.
 - **Template-based composition** — pick a saved template or write a one-off. Templates support `{{variable}}` placeholders that resolve per recipient.
 - **Live email preview** — preview the rendered email for sample recipients before sending. A dropdown lets you switch between recipients to see how variable substitution looks for each.
 - **Per-user dedupe control** — users matched on multiple projects/allocations can receive one email per context or be deduped to one. Controlled per-user in the recipient preview with a "Dedupe all" option.
@@ -65,6 +65,14 @@ INSTALLED_APPS += ["coldfront_notifications"]
 
 EXTRA_APPS_URLS = [
     ("notifications/", "coldfront_notifications.urls", "notifications"),
+]
+
+# Templates and static files (adjust the path to your install location)
+TEMPLATES[0]['DIRS'] += [
+    '/usr/src/app/coldfront_notifications/coldfront_notifications/templates',
+]
+STATICFILES_DIRS += [
+    '/usr/src/app/coldfront_notifications/coldfront_notifications/static',
 ]
 ```
 

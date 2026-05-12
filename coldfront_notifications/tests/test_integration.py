@@ -5,6 +5,7 @@ Requires Django's test database with ColdFront models available.
 """
 import json
 from datetime import timedelta
+import sys
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -467,20 +468,273 @@ class VariableViewsTest(NotificationIntegrationTestCase):
 
 
 class FilterOptionsViewTest(NotificationIntegrationTestCase):
-    """Tests for the filter-options AJAX endpoint."""
+    """Tests for the event-driven filter-options AJAX endpoint."""
 
-    def test_filter_options_with_project(self):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        # Extra fixtures for richer cascade testing.
+        cls.resource2 = Resource.objects.create(
+            name="GPU Cluster",
+            resource_type=cls.resource_type,
+            is_allocatable=True,
+        )
+        # An expired allocation on proj2 with resource2.
+        cls.alloc3 = Allocation.objects.create(
+            project=cls.proj2,
+            status=cls.alloc_status_expired,
+            justification="Old GPU allocation",
+        )
+        cls.alloc3.resources.add(cls.resource2)
+
+    def _post_event(self, event, selections=None):
+        """Helper: POST an event to filter-options and return parsed JSON."""
+        sel = {
+            "projects": [], "allocations": [], "departments": [],
+            "resources": [], "statuses": [], "roles": [],
+        }
+        if selections:
+            sel.update(selections)
         resp = self.client.post(
             reverse("notifications:filter-options"),
-            {"projects": [self.proj1.pk]},
+            json.dumps({"event": event, "selections": sel}),
+            content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertIn("allocations", data)
-        # Should include alloc1 (proj1) but not alloc2 (proj2)
-        alloc_ids = [a["id"] for a in data["allocations"]]
+        return resp.json()
+
+    def _ids(self, data, key):
+        """Extract option ids from the response for a given filter key."""
+        return [o["id"] for o in data[key]["options"]]
+
+    # ── Response shape ──────────────────────────────────────────────
+    def test_response_contains_all_six_filters(self):
+        data = self._post_event("ROLE_UPDATED")
+        for key in ("projects", "allocations", "departments",
+                    "resources", "statuses", "roles"):
+            self.assertIn(key, data)
+            self.assertIn("options", data[key])
+            self.assertIn("selected", data[key])
+
+    # ── PROJECT_UPDATED ─────────────────────────────────────────────
+    def test_project_updated_narrows_allocations(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj1.pk],
+        })
+        alloc_ids = self._ids(data, "allocations")
         self.assertIn(self.alloc1.pk, alloc_ids)
         self.assertNotIn(self.alloc2.pk, alloc_ids)
+        self.assertNotIn(self.alloc3.pk, alloc_ids)
+
+    def test_project_updated_narrows_departments(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj1.pk],
+        })
+        dept_ids = self._ids(data, "departments")
+        self.assertIn("Engineering Dept", dept_ids)
+
+    def test_project_updated_narrows_departments_excludes_unlinked(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj2.pk],
+        })
+        # proj2 has no department link
+        dept_ids = self._ids(data, "departments")
+        self.assertNotIn("Engineering Dept", dept_ids)
+
+    def test_project_updated_narrows_resources(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj2.pk],
+        })
+        res_ids = self._ids(data, "resources")
+        # proj2 has alloc2 (Test Storage) and alloc3 (GPU Cluster)
+        self.assertIn(self.resource.pk, res_ids)
+        self.assertIn(self.resource2.pk, res_ids)
+
+    def test_project_updated_narrows_statuses(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj2.pk],
+        })
+        status_ids = self._ids(data, "statuses")
+        # proj2 has Active (alloc2) and Expired (alloc3)
+        self.assertIn("Active", status_ids)
+        self.assertIn("Expired", status_ids)
+
+    def test_project_updated_narrows_roles(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj1.pk],
+        })
+        role_ids = self._ids(data, "roles")
+        # proj1 has PI (user1) and User (user2), no Manager
+        self.assertIn("Principal Investigator", role_ids)
+        self.assertIn("User", role_ids)
+        self.assertNotIn("Manager", role_ids)
+
+    # ── DEPARTMENT_UPDATED ──────────────────────────────────────────
+    def test_department_updated_narrows_projects(self):
+        data = self._post_event("DEPARTMENT_UPDATED", {
+            "departments": ["Engineering Dept"],
+        })
+        proj_ids = self._ids(data, "projects")
+        self.assertIn(self.proj1.pk, proj_ids)
+        self.assertNotIn(self.proj2.pk, proj_ids)
+
+    def test_department_updated_narrows_allocations(self):
+        data = self._post_event("DEPARTMENT_UPDATED", {
+            "departments": ["Engineering Dept"],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        self.assertIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+
+    # ── ALLOCATION_UPDATED ──────────────────────────────────────────
+    def test_allocation_updated_narrows_resources(self):
+        data = self._post_event("ALLOCATION_UPDATED", {
+            "allocations": [self.alloc3.pk],
+        })
+        res_ids = self._ids(data, "resources")
+        self.assertIn(self.resource2.pk, res_ids)
+        self.assertNotIn(self.resource.pk, res_ids)
+
+    def test_allocation_updated_does_not_narrow_statuses(self):
+        """Status is an independent peer — not narrowed by allocation selection."""
+        data = self._post_event("ALLOCATION_UPDATED", {
+            "allocations": [self.alloc3.pk],
+        })
+        status_ids = self._ids(data, "statuses")
+        # All statuses in the project scope remain available.
+        self.assertIn("Expired", status_ids)
+        self.assertIn("Active", status_ids)
+
+    def test_allocation_updated_preserves_status_scoping(self):
+        """Allocation options should still reflect status selections."""
+        data = self._post_event("ALLOCATION_UPDATED", {
+            "allocations": [self.alloc3.pk],
+            "statuses": ["Expired"],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        # Only expired allocations in the allocation options.
+        self.assertIn(self.alloc3.pk, alloc_ids)
+        self.assertNotIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+
+    def test_allocation_updated_does_not_narrow_projects(self):
+        """Upstream filters must not be narrowed."""
+        data = self._post_event("ALLOCATION_UPDATED", {
+            "allocations": [self.alloc1.pk],
+        })
+        proj_ids = self._ids(data, "projects")
+        # Both projects should still appear.
+        self.assertIn(self.proj1.pk, proj_ids)
+        self.assertIn(self.proj2.pk, proj_ids)
+
+    # ── RESOURCE_UPDATED ────────────────────────────────────────────
+    def test_resource_updated_narrows_allocations(self):
+        data = self._post_event("RESOURCE_UPDATED", {
+            "resources": [self.resource2.pk],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        # Only alloc3 uses resource2
+        self.assertIn(self.alloc3.pk, alloc_ids)
+        self.assertNotIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+
+    def test_resource_updated_narrows_statuses(self):
+        data = self._post_event("RESOURCE_UPDATED", {
+            "resources": [self.resource2.pk],
+        })
+        status_ids = self._ids(data, "statuses")
+        self.assertIn("Expired", status_ids)
+        self.assertNotIn("Active", status_ids)
+
+    def test_resource_updated_does_not_narrow_projects(self):
+        data = self._post_event("RESOURCE_UPDATED", {
+            "resources": [self.resource2.pk],
+        })
+        proj_ids = self._ids(data, "projects")
+        self.assertIn(self.proj1.pk, proj_ids)
+        self.assertIn(self.proj2.pk, proj_ids)
+
+    # ── ALLOCATION_STATUS_UPDATED ───────────────────────────────────
+    def test_status_updated_narrows_allocations(self):
+        data = self._post_event("ALLOCATION_STATUS_UPDATED", {
+            "statuses": ["Expired"],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        self.assertIn(self.alloc3.pk, alloc_ids)
+        self.assertNotIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+
+    def test_status_updated_narrows_resources(self):
+        data = self._post_event("ALLOCATION_STATUS_UPDATED", {
+            "statuses": ["Expired"],
+        })
+        res_ids = self._ids(data, "resources")
+        self.assertIn(self.resource2.pk, res_ids)
+        self.assertNotIn(self.resource.pk, res_ids)
+
+    def test_status_updated_does_not_narrow_projects(self):
+        data = self._post_event("ALLOCATION_STATUS_UPDATED", {
+            "statuses": ["Expired"],
+        })
+        proj_ids = self._ids(data, "projects")
+        self.assertIn(self.proj1.pk, proj_ids)
+        self.assertIn(self.proj2.pk, proj_ids)
+
+    # ── ROLE_UPDATED ────────────────────────────────────────────────
+    def test_role_updated_is_leaf(self):
+        """Role is a leaf filter — nothing should be narrowed."""
+        data_all = self._post_event("ROLE_UPDATED")
+        data_pi  = self._post_event("ROLE_UPDATED", {
+            "roles": ["Principal Investigator"],
+        })
+        # All other filters should have the same options regardless of role.
+        for key in ("projects", "allocations", "departments", "resources", "statuses"):
+            self.assertEqual(
+                self._ids(data_all, key), self._ids(data_pi, key),
+                f"{key} options should not change on ROLE_UPDATED",
+            )
+
+    # ── Selection pruning ───────────────────────────────────────────
+    def test_stale_selection_pruned_from_selected(self):
+        """Selections that are no longer valid should be dropped."""
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj1.pk],
+            # alloc2 belongs to proj2, not proj1 — should be pruned.
+            "allocations": [self.alloc1.pk, self.alloc2.pk],
+        })
+        self.assertIn(self.alloc1.pk, data["allocations"]["selected"])
+        self.assertNotIn(self.alloc2.pk, data["allocations"]["selected"])
+
+    # ── Tier 1 + Tier 2 combined ────────────────────────────────────
+    def test_status_respects_upstream_project_scope(self):
+        """When both project and status are set, allocations should be
+        scoped to the project first, then filtered by status."""
+        data = self._post_event("ALLOCATION_STATUS_UPDATED", {
+            "projects": [self.proj1.pk],
+            "statuses": ["Active"],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        # Only alloc1 is Active in proj1.
+        self.assertIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+        self.assertNotIn(self.alloc3.pk, alloc_ids)
+
+    # ── Error handling ──────────────────────────────────────────────
+    def test_unknown_event_returns_400(self):
+        resp = self.client.post(
+            reverse("notifications:filter-options"),
+            json.dumps({"event": "BOGUS_EVENT", "selections": {}}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_json_returns_400(self):
+        resp = self.client.post(
+            reverse("notifications:filter-options"),
+            "not json",
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
 
 
 class ValidateViewTest(NotificationIntegrationTestCase):
@@ -504,7 +758,9 @@ class ValidateViewTest(NotificationIntegrationTestCase):
         self.assertIn("user_count", data)
         self.assertIn("email_count", data)
         self.assertIn("scope", data)
-        self.assertEqual(data["scope"], "user")
+        # Scope is elevated to at least "project" so counts match the
+        # preview modal (which always shows project-level tuples).
+        self.assertEqual(data["scope"], "project")
 
 
 class RecipientCountViewTest(NotificationIntegrationTestCase):
@@ -539,30 +795,32 @@ class RecipientCountViewTest(NotificationIntegrationTestCase):
 class ComposeViewTest(NotificationIntegrationTestCase):
     """Tests for the compose view POST (send action)."""
 
-    @patch("coldfront_notifications.views._dispatch_send")
-    def test_compose_send_creates_campaign(self, mock_dispatch):
-        resp = self.client.post(reverse("notifications:compose"), {
-            "action": "send",
-            "subject": "Hello {{maint_date}}",
-            "body": "Maintenance on {{maint_date}}.",
-            "sender": "rchelp@example.com",
-            "reply_to": "",
-            "template_id": "",
-            "filter_projects": json.dumps([]),
-            "filter_allocations": json.dumps([]),
-            "filter_resources": json.dumps([]),
-            "filter_departments": json.dumps([]),
-            "filter_statuses": json.dumps([]),
-            "filter_roles": json.dumps([]),
-            "extra_recipients": "",
-            "dedupe_users": "[]",
-        })
-        # Should redirect to campaign detail
-        self.assertEqual(resp.status_code, 302)
-        campaign = NotificationCampaign.objects.latest("created_at")
-        self.assertEqual(campaign.subject, "Hello {{maint_date}}")
-        self.assertEqual(campaign.status, NotificationCampaign.STATUS_QUEUED)
-        mock_dispatch.assert_called_once_with(campaign.pk)
+    def test_compose_send_creates_campaign(self):
+        # patch.object on the module directly to avoid __init__.py name shadowing
+        compose_mod = sys.modules["coldfront_notifications.views.compose"]
+        with patch.object(compose_mod, "_dispatch_send") as mock_dispatch:
+            resp = self.client.post(reverse("notifications:compose"), {
+                "action": "send",
+                "subject": "Hello {{maint_date}}",
+                "body": "Maintenance on {{maint_date}}.",
+                "sender": "rchelp@example.com",
+                "reply_to": "",
+                "template_id": "",
+                "filter_projects": json.dumps([]),
+                "filter_allocations": json.dumps([]),
+                "filter_resources": json.dumps([]),
+                "filter_departments": json.dumps([]),
+                "filter_statuses": json.dumps([]),
+                "filter_roles": json.dumps([]),
+                "extra_recipients": "",
+                "dedupe_users": "[]",
+            })
+            # Should redirect to campaign detail
+            self.assertEqual(resp.status_code, 302)
+            campaign = NotificationCampaign.objects.latest("created_at")
+            self.assertEqual(campaign.subject, "Hello {{maint_date}}")
+            self.assertEqual(campaign.status, NotificationCampaign.STATUS_QUEUED)
+            mock_dispatch.assert_called_once_with(campaign.pk)
 
 
 class StaffRequiredTest(NotificationIntegrationTestCase):
