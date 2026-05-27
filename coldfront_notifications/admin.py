@@ -8,19 +8,19 @@ from .models import (
     NotificationVariable,
     SenderConfig,
 )
-from .resolvers import QUERY_CHOICES
+from .template_variable_value_resolver import registry as resolver_registry
 
 
 class NotificationVariableForm(forms.ModelForm):
     """
-    Force resolver_key into a whitelisted dropdown built from QUERY_CHOICES.
+    Force resolver_key into a whitelisted dropdown built from resolver_registry.choices.
     When source=manual, the field is hidden/cleared.
     """
     resolver_key = forms.ChoiceField(
         required=False,
         choices=(
             [("", "— choose a query path —")]
-            + [(k, f"{group}: {label}") for (k, label, group) in QUERY_CHOICES]
+            + [(k, f"{group}: {label}") for (k, label, group) in resolver_registry.choices]
         ),
         help_text="Only used when Source = Query.",
     )
@@ -35,9 +35,9 @@ class NotificationVariableForm(forms.ModelForm):
 
     def clean(self):
         cleaned = super().clean()
-        if cleaned.get("source") == NotificationVariable.SOURCE_MANUAL:
+        if cleaned.get("source") == NotificationVariable.Source.MANUAL:
             cleaned["resolver_key"] = ""
-        elif cleaned.get("source") == NotificationVariable.SOURCE_QUERY:
+        elif cleaned.get("source") == NotificationVariable.Source.QUERY:
             if not cleaned.get("resolver_key"):
                 raise forms.ValidationError(
                     "Pick a query source when Source = Query."

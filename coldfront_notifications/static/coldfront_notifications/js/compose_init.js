@@ -8,12 +8,15 @@
 
 // ── Serialize filter hidden fields before submit ─────────────────
 $('#notifForm').on('submit', function() {
-  $('#h_projects').val(JSON.stringify($('#f_project').val()    || []));
+  $('#h_projects').val(JSON.stringify($('#f_project').val() || []));
   $('#h_allocations').val(JSON.stringify($('#f_allocation').val() || []));
-  $('#h_depts').val(JSON.stringify($('#f_dept').val()          || []));
-  $('#h_resources').val(JSON.stringify($('#f_resource').val()  || []));
-  $('#h_statuses').val(JSON.stringify($('#f_status').val()     || []));
-  $('#h_roles').val(JSON.stringify($('#f_role').val()          || []));
+  $('#h_depts').val(JSON.stringify($('#f_dept').val() || []));
+  $('#h_resources').val(JSON.stringify($('#f_resource').val() || []));
+  $('#h_statuses').val(JSON.stringify($('#f_status').val() || []));
+  $('#h_roles').val(JSON.stringify($('#f_role').val() || []));
+  if (typeof DRAFT_PK !== 'undefined' && DRAFT_PK) {
+    $('#hidden_draft_pk').val(DRAFT_PK);
+  }
 });
 
 // ── Select2 init ─────────────────────────────────────────────────
@@ -23,11 +26,6 @@ $(document).ready(function() {
     width: '100%',
     placeholder: function() { return $(this).data('placeholder'); }
   });
-
-  // Start with an empty compose form — no template pre-selected.
-
-  // Initialize filter summary tooltips from server-rendered data.
-  updateFilterSummaries(FILTER_SUMMARIES || {});
 });
 
 // ── pageshow: reset validation state + refresh active template ────

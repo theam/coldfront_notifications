@@ -22,6 +22,7 @@
         <a href="?status=sent" class="btn {% if status_filter == 'sent' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Sent</a>
         <a href="?status=partial" class="btn {% if status_filter == 'partial' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Partial</a>
         <a href="?status=failed" class="btn {% if status_filter == 'failed' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Failed</a>
+        <a href="?status=draft" class="btn {% if status_filter == 'draft' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Draft</a>
       </div>
     </div>
   </div>
@@ -31,7 +32,7 @@
         <tr>
           <th>#</th><th>Subject</th><th>Template</th>
           <th class="text-right">Recipients</th><th class="text-right">Delivered</th>
-          <th class="text-right">Failed</th><th>Sent At</th><th>Status</th>
+          <th class="text-right">Failed</th><th>Sent At</th><th>Status</th><th></th>
         </tr>
       </thead>
       <tbody>
@@ -52,9 +53,16 @@
             {% elif c.status == 'draft' %}<span class="badge badge-secondary">Draft</span>
             {% else %}<span class="badge badge-secondary">{{ c.status }}</span>{% endif %}
           </td>
+          <td>
+            {% if c.status == 'draft' %}
+            <a href="{% url 'notifications:compose' %}?draft={{ c.pk }}" class="btn btn-outline-secondary btn-sm" style="font-size:.72rem;">
+              <i class="fas fa-edit mr-1"></i>Edit
+            </a>
+            {% endif %}
+          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="8" class="text-center text-muted py-4">No notifications yet. <a href="{% url 'notifications:compose' %}">Send one →</a></td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-4">No notifications yet. <a href="{% url 'notifications:compose' %}">Send one →</a></td></tr>
         {% endfor %}
       </tbody>
     </table>

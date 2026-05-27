@@ -2,181 +2,127 @@
 
 ## Overview
 
-The compose notification page has 6 recipient filters that are interdependent.
-Every filter change sends a single AJAX request to the backend with the current
-state of all selections. The backend computes the full option list for every
-filter in one pass and returns the complete state — the frontend blindly applies
-it with no local cascade logic.
+The compose page has 6 recipient filters. All filter data is loaded once on
+page load via `FilterDataBuilder`. The frontend `FilterStore` handles cascade
+narrowing entirely client-side — zero AJAX round-trips for filter changes.
 
-Each filter's options are computed considering all **other** active selections
-(no self-narrowing). This prevents circular pruning while keeping all filters
-consistent with each other.
+Two cascade directions:
+- **Top-down (narrow):** selecting a department narrows projects, resources,
+  and allocations via the visible set.
+- **Bottom-up (select):** selecting a role auto-selects matching departments.
+  Manual selections take priority over auto-selections.
 
 ## Filters
 
-| Filter            | DOM ID          | Value type         | DB Source                              |
-|-------------------|-----------------|--------------------|----------------------------------------|
-| Project           | `#f_project`    | Project PKs        | `coldfront.core.project.Project`       |
-| Allocation        | `#f_allocation` | Allocation PKs     | `coldfront.core.allocation.Allocation` |
-| Department        | `#f_dept`       | Dept names (str)   | `ifxuser.Organization` (rank=dept)     |
-| Resource          | `#f_resource`   | Resource PKs       | `coldfront.core.resource.Resource`     |
-| Allocation Status | `#f_status`     | Status names (str) | `AllocationStatusChoice`               |
-| User Role         | `#f_role`       | Role names (str)   | `ProjectUserRoleChoice`                |
+| Filter            | DOM ID          | Value type       | Class                |
+|-------------------|-----------------|------------------|----------------------|
+| Department        | `#f_dept`       | Dept PKs (int)   | `DepartmentFilter`   |
+| Project           | `#f_project`    | Project PKs      | `ProjectFilter`      |
+| Resource          | `#f_resource`   | Resource PKs     | `ResourceFilter`     |
+| Allocation Status | `#f_status`     | Status names     | `StatusFilter`       |
+| Allocation        | `#f_allocation` | Allocation PKs   | `AllocationFilter`   |
+| User Role         | `#f_role`       | Role names       | `RoleFilter`         |
 
 ## Database Relationships
 
 ```
-Project  <──M2M──>  Department/Organization
-   │                  (via ProjectOrganization bridge table,
-   │                   FKs to both Project and Organization)
-   │
-   ├── FK ── Allocation
-   │            ├── M2M ── Resource   (Allocation.resources ManyToManyField)
-   │            └── FK  ── AllocationStatusChoice  (Allocation.status)
-   │
-   └── FK ── ProjectUser
-                ├── FK ── User
-                └── FK ── ProjectUserRoleChoice  (ProjectUser.role)
+Department (Organization, org_tree='Research Computing Storage Billing')
+  └── Lab (OrgRelation, child__rank='lab')
+       └── Project (ProjectOrganization)
+            ├── Allocation
+            │    ├── Resource   (M2M via Allocation.resources)
+            │    └── Status     (FK to AllocationStatusChoice)
+            └── ProjectUser
+                 ├── User
+                 └── Role       (FK to ProjectUserRoleChoice)
 ```
 
-Key details:
-- **Allocation → Resource is M2M** (one allocation can reference multiple resources).
-- **Project ↔ Department** is M2M via `ProjectOrganization` (in `coldfront.plugins.ifx.models`).
-- **Role** is reached through `ProjectUser`, which has `unique_together = ('user', 'project')`.
-- **Department** is actually an `Organization` with `rank="department"` (proxy model).
+Key: Department → Project traversal goes through OrgRelation and
+ProjectOrganization (not a direct FK). The `DepartmentFilter._apply()` method
+and `DepartmentFilter.initial_options()` both use this join chain.
 
-## Filter Tiers
-
-Filters are organized into tiers that determine narrowing direction:
+## Filter Cascade
 
 ```
-Tier 1 (top):    Project  <-->  Department     (mutual peers)
-Tier 2 (mid):    Allocation  ·  Resource  ·  Status   (peers under Tier 1)
-Tier 3 (leaf):   Role
+Top-down narrowing:
+
+  Department → Projects → Resources
+                       → Allocations ← Statuses
+                                     ← Resources
+
+Bottom-up selection:
+
+  Role → auto-selects Departments (if no manual dept selections)
 ```
 
-- **Between tiers**: top-down only (Tier 1 narrows Tier 2, never the reverse).
-- **Within Tier 1**: mutual peers — each narrows the other.
-- **Within Tier 2**: each filter's options are scoped by the other Tier 2
-  selections, with one exception: **Status is independent of Allocation
-  selection** to prevent circular pruning (selecting an allocation would drop
-  statuses, which would cascade-remove other allocations).
-- **Tier 3**: Role is scoped by the Tier 1 project scope but does not narrow
-  any other filter.
+## State Model
 
-## How Each Filter's Options Are Computed
+Each filter in the `FilterStore` has:
+- `all` — full server dataset, never changes after page load
+- `visible` — subset of `all` after upstream narrowing
+- `selected` — user's manual picks (subset of visible)
+- `autoSelected` — set by bottom-up propagation (role → departments)
+- `dismissed` — auto-selected items the user explicitly removed
+- `autoSource` — human-readable description of what triggered auto-select
 
-All filters are always computed on every request, regardless of which filter
-changed. The event name is used only for request validation.
-
-### Tier 1
-
-| Filter     | Scoped by              | Excludes own selection? |
-|------------|------------------------|-------------------------|
-| Project    | `sel_departments`      | Yes (not `sel_projects`) |
-| Department | `sel_projects`         | Yes (not `sel_departments`) |
-
-### Full Project Scope (for Tier 2)
-
-Both `sel_projects` and `sel_departments` are applied to create the project
-scope used by all Tier 2 filters.
-
-### Tier 2
-
-All Tier 2 filters start from `Allocation.filter(project__in=project_scope)`.
-
-| Filter            | Additional scoping                          | Excludes                    |
-|-------------------|---------------------------------------------|-----------------------------|
-| Allocation        | `sel_statuses` + `sel_resources`            | `sel_allocations`           |
-| Resource          | `sel_statuses` + `sel_allocations`          | `sel_resources`             |
-| Allocation Status | `sel_resources` only                        | `sel_allocations` + `sel_statuses` |
-
-**Why Status excludes `sel_allocations`**: if the user selects statuses
-"Active" + "Denied" then picks an Active allocation, computing statuses from
-that allocation alone would drop "Denied" — removing the other allocations the
-user hasn't selected yet.
-
-### Tier 3
-
-| Filter | Scoped by      |
-|--------|----------------|
-| Role   | `project_scope` |
-
-## Protocol
-
-### Request
-
-```
-POST /filter-options/
-Content-Type: application/json
-X-CSRFToken: <token>
-
-{
-  "event": "ALLOCATION_STATUS_UPDATED",
-  "selections": {
-    "projects":    [],
-    "allocations": [],
-    "departments": [],
-    "resources":   [],
-    "statuses":    ["Active", "Denied"],
-    "roles":       []
-  }
-}
-```
-
-Valid events: `PROJECT_UPDATED`, `DEPARTMENT_UPDATED`, `ALLOCATION_UPDATED`,
-`RESOURCE_UPDATED`, `ALLOCATION_STATUS_UPDATED`, `ROLE_UPDATED`.
-
-### Response
-
-```json
-{
-  "projects": {
-    "options":  [{"id": 1, "label": "Project Alpha"}, ...],
-    "selected": [1],
-    "summary":  {"count": 11, "breakdown": "11 Active", "filtered_by": ""}
-  },
-  "allocations": { ... },
-  "departments": { ... },
-  "resources":   { ... },
-  "statuses":    { ... },
-  "roles":       { ... }
-}
-```
-
-- `options` — full list of valid choices for the dropdown.
-- `selected` — the user's prior selections pruned to only values still in `options`.
-- `summary` — structured data for the filter info tooltip and details modal.
-  - `count` — number of options available.
-  - `breakdown` — grouped description (e.g., "7 Active, 1 Expired").
-  - `filtered_by` — which other filters narrowed this one. Empty string if the
-    filter shows its full unfiltered set.
-
-## Frontend Architecture
-
-The compose page JS is split into 5 modules loaded in order:
-
-1. **`compose_filters.js`** — filter cascade, `collectFilters()`,
-   `getDedupeUsers()`, `setDedupeUsers()`, summary tooltips, inline summary
-   chips, filter details modal, filter locking during AJAX.
-2. **`compose_validate.js`** — validation AJAX, send-bar UI, input
-   invalidation, filter summary bar in validation panel.
-3. **`compose_templates.js`** — template list/search/load, variable chip
-   rendering, variable insert at cursor.
-4. **`compose_preview.js`** — email preview modal, recipient preview modal
-   (with dedupe and pagination).
-5. **`compose_init.js`** — Select2 init, form submit serialization, pageshow
-   reset. Must load last.
+Downstream filters read `getEffectiveIds()` which returns:
+1. `selected` if any exist, else
+2. `visible` IDs if narrowed from `all`, else
+3. `null` (no constraint)
 
 ## Backend Architecture
 
-Filter logic lives in `views/filters.py`:
+All filter logic lives in `filters.py`:
 
-- `build_filter_summaries()` — generates `{count, breakdown, filtered_by}`
-  dicts for each filter, grouped by meaningful attributes (projects by status,
-  allocations by status, resources by type, etc.).
-- `get_filter_context()` — initial filter data for the compose page template
-  (options + summaries for all 6 filters, senders, reply-tos).
-- `compute_filter_options(selections)` — the core cross-filter computation.
-  Called by the `filter_options` view. Returns the full response dict ready for
-  `JsonResponse`.
+- **`BaseFilter`** — abstract class with `initial_options()` and `_apply()`
+- **6 filter classes** — each owns both its UI options and queryset filtering
+- **`FilterDataBuilder`** — assembles all filter data into JSON for page load
+- **`RecipientResolver`** — resolves selected filters into actual recipients
+  at send time
+
+## Frontend Architecture
+
+JS modules loaded in order:
+
+1. **`compose_filters.js`** — FilterStore, FilterWidget, narrowing functions,
+   bottom-up propagation, filter details cards, clear filters
+2. **`compose_validate.js`** — validation AJAX, send-bar UI
+3. **`compose_templates.js`** — template list/search/load, variable chips
+4. **`compose_preview.js`** — email preview and recipient preview modals
+5. **`compose_draft.js`** — draft auto-save, resume, dirty tracking
+6. **`compose_init.js`** — Select2 init, form submit serialization (loads last)
+
+## Filter Data Format
+
+Each filter's options from `FilterDataBuilder.build()`:
+
+```json
+{
+  "departments": {
+    "options": [
+      {"id": 1880, "label": "Chemistry and Chemical Biology", "project_ids": [55, 94, ...]}
+    ],
+    "narrowed_by": []
+  },
+  "projects": {
+    "options": [{"id": 1, "label": "alpha_lab"}],
+    "narrowed_by": ["departments"]
+  },
+  "resources": {
+    "options": [{"id": 38, "label": "FASRC Cluster", "project_ids": [2, 3, ...]}],
+    "narrowed_by": ["projects"]
+  },
+  "statuses": {
+    "options": [{"id": "Active", "label": "Active"}],
+    "narrowed_by": []
+  },
+  "allocations": {
+    "options": [{"id": 100, "label": "alpha_lab — Storage", "project_id": 1, "status": "Active", "resource_ids": [38]}],
+    "narrowed_by": ["projects", "resources", "statuses"]
+  },
+  "roles": {
+    "options": [{"id": "PI", "label": "PI", "project_ids": [1, 2, ...]}],
+    "narrowed_by": []
+  }
+}
+```

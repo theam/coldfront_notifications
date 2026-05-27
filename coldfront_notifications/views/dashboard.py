@@ -1,26 +1,48 @@
-from django.contrib.admin.views.decorators import staff_member_required as staff_required
-from django.shortcuts import render
+"""Dashboard view showing recent campaigns and delivery stats."""
+from __future__ import annotations
+
+from datetime import timedelta
+from typing import Any
+
 from django.utils import timezone
+from django.views.generic import TemplateView
 
 from ..models import NotificationCampaign, NotificationLog
+from .helpers import StaffRequiredMixin
 
 
-@staff_required
-def dashboard(request):
-    from datetime import timedelta
-    thirty_days_ago = timezone.now() - timedelta(days=30)
+class DashboardView(StaffRequiredMixin, TemplateView):
+    """Notification dashboard with recent campaigns and 30-day stats."""
 
-    recent = NotificationCampaign.objects.select_related("template")[:10]
-    stats = {
-        "total_sent":      NotificationLog.objects.filter(status="delivered").count(),
-        "total_failed_30": NotificationCampaign.objects.filter(
-            status=NotificationCampaign.STATUS_FAILED,
-            created_at__gte=thirty_days_ago,
-        ).count(),
-        "sending_now":     NotificationCampaign.objects.filter(status="sending").count(),
-        "total_campaigns": NotificationCampaign.objects.count(),
-    }
-    return render(request, "dashboard.html", {
-        "recent_campaigns": recent,
-        **stats,
-    })
+    template_name = "coldfront_notifications/dashboard.html"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+
+        context.update({
+            "recent_campaigns": (
+                NotificationCampaign.objects
+                .select_related("template")[:10]
+            ),
+            "total_sent": (
+                NotificationLog.objects
+                .filter(status=NotificationLog.Status.DELIVERED)
+                .count()
+            ),
+            "total_failed_30": (
+                NotificationCampaign.objects
+                .filter(
+                    status=NotificationCampaign.Status.FAILED,
+                    created_at__gte=thirty_days_ago,
+                )
+                .count()
+            ),
+            "sending_now": (
+                NotificationCampaign.objects
+                .filter(status=NotificationCampaign.Status.SENDING)
+                .count()
+            ),
+            "total_campaigns": NotificationCampaign.objects.count(),
+        })
+        return context

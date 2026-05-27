@@ -107,6 +107,7 @@ var PREVIEW_TOTAL_PAGES = 1;
 var PREVIEW_TOTAL = 0;
 var PREVIEW_USER_COUNT = 0;
 var ALL_MULTI_USERS = [];
+var ALL_MULTI_COUNTS = {};  // username → email count (for dedup math)
 
 function renderPreviewRows() {
   // Group rows by username preserving order.
@@ -157,7 +158,26 @@ function renderPreviewRows() {
   });
   $('#recipRows').html(html || '<tr><td colspan="6" class="text-center text-muted py-3">No recipients matched.</td></tr>');
 
-  $('#recipModalCount').text(PREVIEW_TOTAL + ' emails, ' + PREVIEW_USER_COUNT + ' users');
+  // Compute effective email count: deduped users count as 1 email each.
+  var dedupeList = getDedupeUsers();
+  var dedupeSet = {};
+  dedupeList.forEach(function(u) { dedupeSet[u] = true; });
+
+  // For each multi-user that's deduped, subtract (count - 1) from total.
+  var effective = PREVIEW_TOTAL;
+  if (dedupeList.length && PREVIEW_TOTAL > 0) {
+    ALL_MULTI_USERS.forEach(function(u) {
+      if (dedupeSet[u] && ALL_MULTI_COUNTS[u]) {
+        effective -= (ALL_MULTI_COUNTS[u] - 1);
+      }
+    });
+  }
+
+  var countText = effective + ' emails, ' + PREVIEW_USER_COUNT + ' users';
+  if (effective !== PREVIEW_TOTAL) {
+    countText += ' (was ' + PREVIEW_TOTAL + ' before dedupe)';
+  }
+  $('#recipModalCount').text(countText);
   $('#recipModalScope').hide();
 }
 
@@ -207,6 +227,8 @@ function fetchPreviewPage(page) {
       PREVIEW_TOTAL_PAGES = data.total_pages || 1;
       PREVIEW_PAGE        = data.page || 1;
       ALL_MULTI_USERS = (data.multi_users || []).map(function(m) { return m.username; });
+      ALL_MULTI_COUNTS = {};
+      (data.multi_users || []).forEach(function(m) { ALL_MULTI_COUNTS[m.username] = m.count; });
       renderPreviewRows();
       // Show dedupe-all row if any multi-email users exist across all pages
       if (ALL_MULTI_USERS.length) {
