@@ -34,10 +34,11 @@ jobs:
             coldfront_notifications.tests.test_resolvers \
             coldfront_notifications.tests.test_validators \
             coldfront_notifications.tests.test_tasks_unit \
+            coldfront_notifications.tests.test_filters \
             coldfront_notifications.tests.test_conf \
             -v
           coverage report --show-missing --fail-under=80 \
-            --include="coldfront_notifications/resolvers.py,coldfront_notifications/validators.py,coldfront_notifications/conf.py,coldfront_notifications/__init__.py"
+            --include="coldfront_notifications/template_variable_value_resolver.py,coldfront_notifications/notification_validator.py,coldfront_notifications/campaign_sender.py,coldfront_notifications/filters.py,coldfront_notifications/conf.py,coldfront_notifications/__init__.py"
         env:
           PYTHONPATH: .
 
@@ -112,6 +113,6 @@ jobs:
               ROOT_URLCONF='coldfront_notifications.urls',
           )
           django.setup()
-          from coldfront_notifications import urls, models, views, resolvers, validators, tasks, conf
+          from coldfront_notifications import urls, models, views, template_variable_value_resolver, notification_validator, campaign_sender, filters, conf
           print('All modules importable')
           "

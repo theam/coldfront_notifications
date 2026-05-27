@@ -148,7 +148,6 @@ class NotificationValidator:
             return f"cannot resolve {variable.resolver_key} for this recipient"
 
 
-
 def extract_tokens(subject: str, body: str) -> list[str]:
     """Extract unique {{token}} names from subject and body."""
     seen = set()

@@ -61,7 +61,6 @@ def format_value(value):
     return formatted
 
 
-
 class BaseResolverGroup:
     """Each subclass defines resolvers for a scope (user, project, allocation).
 
@@ -282,7 +281,6 @@ class ResourceResolverGroup(BaseResolverGroup):
             resource.name for resource in context.allocation.resources.all()
         )
         return format_value(resource_names or None)
-
 
 
 class ResolverRegistry:

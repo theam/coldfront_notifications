@@ -11,7 +11,6 @@ import logging
 import re
 import smtplib
 import time
-from collections import defaultdict
 
 from django.core.mail import EmailMessage, get_connection
 from django.utils import timezone
@@ -180,12 +179,6 @@ class CampaignSender:
         Returns a list of (user, project, allocation, rendered_subject, rendered_body)
         tuples, or None if a resolution error occurred.
         """
-        bcc_recipients = list(set(
-            address.strip()
-            for address in snapshot.get("extra_recipients", [])
-            if address.strip()
-        ))
-
         resolver = RecipientResolver(snapshot)
         resolved = []
 
@@ -297,7 +290,6 @@ class CampaignSender:
         self.campaign.completed_at = timezone.now()
         self.campaign.save(update_fields=["status", "completed_at"])
         logger.error("Campaign %s FAILED: %s", self.campaign.pk, reason)
-
 
 
 @shared_task
