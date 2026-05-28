@@ -225,5 +225,103 @@ class TestSmtpDeliverySendWithRetry(unittest.TestCase):
         self.assertEqual(message.send.call_count, 2)
 
 
+class TestSmtpDeliveryReopenConnection(unittest.TestCase):
+    """Tests for SmtpDelivery._reopen_connection()."""
+
+    def setUp(self):
+        self.delivery = SmtpDelivery()
+
+    def test_reopen_closes_and_opens(self):
+        connection = MagicMock()
+        self.delivery._reopen_connection(connection)
+        connection.close.assert_called_once()
+        connection.open.assert_called_once()
+
+    def test_close_failure_swallowed(self):
+        connection = MagicMock()
+        connection.close.side_effect = OSError("close failed")
+        self.delivery._reopen_connection(connection)
+        connection.open.assert_called_once()
+
+    def test_open_failure_raises(self):
+        connection = MagicMock()
+        connection.open.side_effect = ConnectionError("cannot open")
+        with self.assertRaises(ConnectionError):
+            self.delivery._reopen_connection(connection)
+
+
+class TestCampaignSender(unittest.TestCase):
+    """Tests for CampaignSender orchestration."""
+
+    @patch("coldfront_notifications.campaign_sender.NotificationVariable")
+    @patch("coldfront_notifications.campaign_sender.extract_tokens", return_value=["name"])
+    @patch("coldfront_notifications.campaign_sender.determine_scope", return_value="project")
+    @patch("coldfront_notifications.campaign_sender.RecipientResolver")
+    @patch("coldfront_notifications.campaign_sender.get_connection")
+    @patch("coldfront_notifications.campaign_sender.timezone")
+    @patch("coldfront_notifications.campaign_sender.NotificationLog")
+    def test_send_with_no_recipients_fails(self, mock_log, mock_tz, mock_conn,
+                                            mock_resolver_cls, mock_scope,
+                                            mock_tokens, mock_nv):
+        from coldfront_notifications.campaign_sender import CampaignSender
+
+        campaign = MagicMock()
+        campaign.filters_snapshot = {}
+        campaign.subject = "Hi {{name}}"
+        campaign.body = "Body"
+        campaign.logs.all.return_value.delete.return_value = None
+
+        mock_var = MagicMock()
+        mock_var.key = "name"
+        mock_nv.objects.filter.return_value = [mock_var]
+
+        mock_resolver = MagicMock()
+        mock_resolver.enumerate_deduped.return_value = iter([])
+        mock_resolver_cls.return_value = mock_resolver
+
+        sender = CampaignSender(campaign)
+        sender.send()
+
+        campaign.save.assert_called()
+        self.assertEqual(campaign.status, "failed")
+
+    def test_fail_sets_status_and_saves(self):
+        from coldfront_notifications.campaign_sender import CampaignSender
+
+        campaign = MagicMock()
+        sender = CampaignSender(campaign)
+        sender._fail("test reason")
+
+        self.assertEqual(campaign.status, "failed")
+        campaign.save.assert_called_once()
+
+
+class TestSendNotificationCampaignTask(unittest.TestCase):
+    """Tests for the celery task wrapper."""
+
+    @patch("coldfront_notifications.campaign_sender.NotificationCampaign")
+    def test_missing_campaign_logs_error(self, mock_model):
+        from coldfront_notifications.campaign_sender import send_notification_campaign
+        from coldfront_notifications.models import NotificationCampaign
+
+        mock_model.DoesNotExist = NotificationCampaign.DoesNotExist
+        mock_model.objects.get.side_effect = NotificationCampaign.DoesNotExist
+        send_notification_campaign(999)
+        mock_model.objects.get.assert_called_once_with(pk=999)
+
+    @patch("coldfront_notifications.campaign_sender.CampaignSender")
+    @patch("coldfront_notifications.campaign_sender.NotificationCampaign")
+    def test_delegates_to_campaign_sender(self, mock_model, mock_sender_cls):
+        from coldfront_notifications.campaign_sender import send_notification_campaign
+
+        campaign = MagicMock()
+        mock_model.objects.get.return_value = campaign
+
+        send_notification_campaign(1)
+
+        mock_sender_cls.assert_called_once_with(campaign)
+        mock_sender_cls.return_value.send.assert_called_once()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -299,5 +299,179 @@ class TestAllocationResolvers(unittest.TestCase):
                 resolver_registry.resolve(key, context)
 
 
+class TestUserResolverGroup(unittest.TestCase):
+    """Tests for user-scoped resolvers not covered above."""
+
+    def _make_context(self, user=None):
+        return {"user": user or MagicMock(), "project": None, "allocation": None}
+
+    def test_resolve_first_name(self):
+        user = MagicMock()
+        user.first_name = "Jane"
+        self.assertEqual(resolver_registry.resolve("user.first_name", self._make_context(user)), "Jane")
+
+    def test_resolve_last_name(self):
+        user = MagicMock()
+        user.last_name = "Doe"
+        self.assertEqual(resolver_registry.resolve("user.last_name", self._make_context(user)), "Doe")
+
+
+class TestProjectResolverGroupExtended(unittest.TestCase):
+    """Tests for project resolvers not covered above."""
+
+    def _make_context(self, user=None, project=None, allocation=None):
+        return {"user": user or MagicMock(), "project": project, "allocation": allocation}
+
+    def test_resolve_title(self):
+        project = MagicMock()
+        project.title = "smith_lab"
+        self.assertEqual(resolver_registry.resolve("project.title", self._make_context(project=project)), "smith_lab")
+
+    def test_resolve_status(self):
+        project = MagicMock()
+        project.status.name = "Active"
+        self.assertEqual(resolver_registry.resolve("project.status.name", self._make_context(project=project)), "Active")
+
+    def test_resolve_field_of_science(self):
+        project = MagicMock()
+        project.field_of_science_id = 1
+        project.field_of_science.description = "Computer Science"
+        self.assertEqual(resolver_registry.resolve("project.field_of_science.description", self._make_context(project=project)), "Computer Science")
+
+    def test_resolve_field_of_science_missing_raises(self):
+        project = MagicMock()
+        project.field_of_science_id = None
+        with self.assertRaises(MissingValue):
+            resolver_registry.resolve("project.field_of_science.description", self._make_context(project=project))
+
+    def test_resolve_parent_title(self):
+        project = MagicMock()
+        project.parent_project_id = 1
+        project.parent_project.title = "Parent Lab"
+        self.assertEqual(resolver_registry.resolve("project.parent_project.title", self._make_context(project=project)), "Parent Lab")
+
+    def test_resolve_parent_title_missing_raises(self):
+        project = MagicMock()
+        project.parent_project_id = None
+        with self.assertRaises(MissingValue):
+            resolver_registry.resolve("project.parent_project.title", self._make_context(project=project))
+
+
+class TestPIResolverGroup(unittest.TestCase):
+    """Tests for PI resolvers."""
+
+    def _make_context(self, project=None):
+        return {"user": MagicMock(), "project": project, "allocation": None}
+
+    def test_resolve_pi_full_name(self):
+        project = MagicMock()
+        project.pi_id = 1
+        project.pi.get_full_name.return_value = "Dr. Smith"
+        self.assertEqual(resolver_registry.resolve("project.pi.full_name", self._make_context(project)), "Dr. Smith")
+
+    def test_resolve_pi_full_name_falls_back_to_username(self):
+        project = MagicMock()
+        project.pi_id = 1
+        project.pi.get_full_name.return_value = ""
+        project.pi.username = "smith"
+        self.assertEqual(resolver_registry.resolve("project.pi.full_name", self._make_context(project)), "smith")
+
+    def test_resolve_pi_email(self):
+        project = MagicMock()
+        project.pi_id = 1
+        project.pi.email = "smith@test.com"
+        self.assertEqual(resolver_registry.resolve("project.pi.email", self._make_context(project)), "smith@test.com")
+
+    def test_resolve_pi_username(self):
+        project = MagicMock()
+        project.pi_id = 1
+        project.pi.username = "smith"
+        self.assertEqual(resolver_registry.resolve("project.pi.username", self._make_context(project)), "smith")
+
+    def test_resolve_pi_missing_raises(self):
+        project = MagicMock()
+        project.pi_id = None
+        with self.assertRaises(MissingValue):
+            resolver_registry.resolve("project.pi.full_name", self._make_context(project))
+
+
+class TestResourceResolverGroup(unittest.TestCase):
+    """Tests for resource resolvers."""
+
+    def _make_context(self, allocation=None):
+        return {"user": MagicMock(), "project": MagicMock(), "allocation": allocation}
+
+    def test_resolve_resource_name(self):
+        allocation = MagicMock()
+        allocation.get_parent_resource.name = "bos-isilon/tier1"
+        self.assertEqual(resolver_registry.resolve("resource.name", self._make_context(allocation)), "bos-isilon/tier1")
+
+    def test_resolve_resource_type(self):
+        allocation = MagicMock()
+        allocation.get_parent_resource.resource_type_id = 1
+        allocation.get_parent_resource.resource_type.name = "Storage"
+        self.assertEqual(resolver_registry.resolve("resource.resource_type.name", self._make_context(allocation)), "Storage")
+
+    def test_resolve_resource_type_missing_raises(self):
+        allocation = MagicMock()
+        allocation.get_parent_resource.resource_type_id = None
+        with self.assertRaises(MissingValue):
+            resolver_registry.resolve("resource.resource_type.name", self._make_context(allocation))
+
+    def test_resolve_parent_resource_name(self):
+        allocation = MagicMock()
+        allocation.get_parent_resource.parent_resource_id = 1
+        allocation.get_parent_resource.parent_resource.name = "isilon"
+        self.assertEqual(resolver_registry.resolve("resource.parent_resource.name", self._make_context(allocation)), "isilon")
+
+    def test_resolve_parent_resource_missing_raises(self):
+        allocation = MagicMock()
+        allocation.get_parent_resource.parent_resource_id = None
+        with self.assertRaises(MissingValue):
+            resolver_registry.resolve("resource.parent_resource.name", self._make_context(allocation))
+
+    def test_resolve_names_joined(self):
+        allocation = MagicMock()
+        resource1 = MagicMock()
+        resource1.name = "storage-a"
+        resource2 = MagicMock()
+        resource2.name = "storage-b"
+        allocation.resources.all.return_value = [resource1, resource2]
+        self.assertEqual(resolver_registry.resolve("resource.names_joined", self._make_context(allocation)), "storage-a, storage-b")
+
+    def test_resolve_names_joined_empty_raises(self):
+        allocation = MagicMock()
+        allocation.resources.all.return_value = []
+        with self.assertRaises(MissingValue):
+            resolver_registry.resolve("resource.names_joined", self._make_context(allocation))
+
+
+class TestAllocationResolverGroupExtended(unittest.TestCase):
+    """Tests for allocation resolvers not covered above."""
+
+    def _make_context(self, allocation=None):
+        return {"user": MagicMock(), "project": MagicMock(), "allocation": allocation}
+
+    def test_resolve_quantity(self):
+        allocation = MagicMock()
+        allocation.quantity = 100
+        self.assertEqual(resolver_registry.resolve("allocation.quantity", self._make_context(allocation)), "100")
+
+    def test_resolve_start_date(self):
+        allocation = MagicMock()
+        allocation.start_date = "2026-01-01"
+        self.assertEqual(resolver_registry.resolve("allocation.start_date", self._make_context(allocation)), "2026-01-01")
+
+    def test_resolve_end_date(self):
+        allocation = MagicMock()
+        allocation.end_date = "2027-01-01"
+        self.assertEqual(resolver_registry.resolve("allocation.end_date", self._make_context(allocation)), "2027-01-01")
+
+    def test_resolve_status(self):
+        allocation = MagicMock()
+        allocation.status.name = "Active"
+        self.assertEqual(resolver_registry.resolve("allocation.status.name", self._make_context(allocation)), "Active")
+
+
 if __name__ == "__main__":
     unittest.main()

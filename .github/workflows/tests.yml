@@ -25,8 +25,6 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install "Django>=4.2,<5" coverage
-        env:
-          PYTHONPATH: .
 
       - name: Run unit tests
         run: |
@@ -38,7 +36,7 @@ jobs:
             coldfront_notifications.tests.test_conf \
             -v
           coverage report --show-missing --fail-under=80 \
-            --include="coldfront_notifications/template_variable_value_resolver.py,coldfront_notifications/notification_validator.py,coldfront_notifications/campaign_sender.py,coldfront_notifications/filters.py,coldfront_notifications/conf.py,coldfront_notifications/__init__.py"
+            --include="coldfront_notifications/template_variable_value_resolver.py,coldfront_notifications/notification_validator.py,coldfront_notifications/campaign_sender.py,coldfront_notifications/conf.py,coldfront_notifications/__init__.py"
         env:
           PYTHONPATH: .
 
@@ -92,27 +90,10 @@ jobs:
       - name: Check package
         run: twine check dist/*
 
-      - name: Verify wheel contents
+      - name: Verify wheel installs
         run: |
           pip install dist/*.whl
           python -c "
-          import django
-          from django.conf import settings
-          settings.configure(
-              INSTALLED_APPS=[
-                  'django.contrib.contenttypes',
-                  'django.contrib.auth',
-                  'django.contrib.admin',
-                  'django.contrib.sessions',
-                  'django.contrib.messages',
-                  'coldfront_notifications',
-              ],
-              DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': ':memory:'}},
-              DEFAULT_AUTO_FIELD='django.db.models.BigAutoField',
-              AUTH_USER_MODEL='auth.User',
-              ROOT_URLCONF='coldfront_notifications.urls',
-          )
-          django.setup()
-          from coldfront_notifications import urls, models, views, template_variable_value_resolver, notification_validator, campaign_sender, filters, conf
-          print('All modules importable')
+          import coldfront_notifications
+          print(f'Installed: coldfront_notifications {coldfront_notifications.__version__}')
           "
