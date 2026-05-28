@@ -308,8 +308,6 @@ class RecipientCountView(StaffRequiredMixin, View):
         used_variables = list(NotificationVariable.objects.filter(key__in=tokens))
         token_scope = determine_scope(used_variables)
 
-        if RecipientResolver(filters)._has_allocation_filters():
-            return "allocation"
         return max(token_scope, "project", key=["user", "project", "allocation"].index)
 
     @staticmethod
@@ -498,14 +496,11 @@ class ValidateView(StaffRequiredMixin, View):
         used_variables = list(NotificationVariable.objects.filter(key__in=tokens))
         token_scope = determine_scope(used_variables)
 
-        if RecipientResolver(filters)._has_allocation_filters():
-            elevated_scope = "allocation"
-        else:
-            elevated_scope = max(
-                token_scope,
-                "project",
-                key=["user", "project", "allocation"].index,
-            )
+        elevated_scope = max(
+            token_scope,
+            "project",
+            key=["user", "project", "allocation"].index,
+        )
 
         result = NotificationValidator(
             subject,
