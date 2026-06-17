@@ -194,6 +194,32 @@ records, so they disappear when the template requires allocation-level data.
 
 ---
 
+### Scenario 7b — Resource narrows Projects (team feedback fix)
+
+> "I filtered by resource for nesetape/tier3 and it showed 74 allocations.
+> But the project dropdown hadn't removed the projects that did not contain
+> that resource."
+
+**Data chain:**
+- Resource selected → its `project_ids` constrain the projects dropdown
+- Projects narrow → allocations narrow (cascade continues downstream)
+
+**Steps:**
+1. Open Compose Notification
+2. Verify: Projects dropdown shows full count (1200)
+3. Select **Resource** → pick any resource (e.g. "bos-isilon/tier1")
+4. Verify: **Projects dropdown narrows** to only projects with that resource
+5. Verify: Allocations narrow accordingly
+6. Verify: Detail card on Projects shows "Filtered by: Resource"
+7. **Deselect** the resource
+8. Verify: Projects return to full count (1200)
+
+**Expected result:** Projects narrow when resource is selected
+
+**Evidence:** [ ] Screenshot / [ ] Video
+
+---
+
 ### Scenario 8 — Multiple departments
 
 **Data chain:**

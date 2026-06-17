@@ -30,6 +30,11 @@ urlpatterns = [
         name="campaign-detail",
     ),
     path(
+        "campaigns/<int:pk>/delete-draft/",
+        views.DraftDeleteView.as_view(),
+        name="draft-delete",
+    ),
+    path(
         "campaigns/<int:pk>/resend/",
         views.ResendFailedView.as_view(),
         name="resend",

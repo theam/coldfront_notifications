@@ -9,11 +9,11 @@
 // - "selected" = user's manual picks
 //
 // Cascade directions:
-// - Top-down (narrow): selecting a department narrows projects, resources,
-//   allocations via the visible set.
+// - Top-down (narrow): department → projects → resources → allocations.
+//   Resource also narrows projects (bidirectional with cycle guard).
 // - Bottom-up (inform): selecting a child filter shows context in the
 //   detail cards (e.g. which departments/projects an allocation belongs to)
-//   but never modifies other dropdowns.
+//   without modifying upstream dropdowns (except resource → projects).
 //
 // Globals used:    FILTER_DATA (from Django template)
 // Globals exported: collectFilters, getDedupeUsers, setDedupeUsers
@@ -21,6 +21,7 @@
 var FilterStore = {
   state: {},
   listeners: {},
+  _dispatching: {},
 
   register: function(widget, events) {
     for (var i = 0; i < events.length; i++) {
@@ -31,10 +32,16 @@ var FilterStore = {
   },
 
   dispatch: function(eventName) {
-    var chain = this.listeners[eventName] || [];
-    for (var i = 0; i < chain.length; i++) {
-      chain[i].narrow();
-      chain[i].dispatchChanged();
+    if (this._dispatching[eventName]) return;
+    this._dispatching[eventName] = true;
+    try {
+      var chain = this.listeners[eventName] || [];
+      for (var i = 0; i < chain.length; i++) {
+        chain[i].narrow();
+        chain[i].dispatchChanged();
+      }
+    } finally {
+      this._dispatching[eventName] = false;
     }
   },
 
@@ -143,27 +150,40 @@ FilterWidget.prototype._bindChange = function() {
 // Top-down narrowing functions
 
 function narrowProjects(row, store) {
-  var selected = store.getSelected('departments');
-  if (!selected.length) {
-    var effectiveIds = store.getEffectiveIds('departments');
-    if (!effectiveIds) return true;
-    var lookup = _toLookup(effectiveIds);
+  var passedDepartment = true;
+  var passedResource = true;
+
+  // Department filter: check if this project belongs to a selected department
+  var selectedDepts = store.getSelected('departments');
+  if (selectedDepts.length) {
+    passedDepartment = false;
     var deptState = store.state.departments;
     for (var i = 0; i < deptState.all.length; i++) {
       var dept = deptState.all[i];
-      if (!lookup[dept.id]) continue;
-      if (dept.project_ids && dept.project_ids.indexOf(row.id) !== -1) return true;
+      if (selectedDepts.indexOf(dept.id) === -1) continue;
+      if (dept.project_ids && dept.project_ids.indexOf(row.id) !== -1) {
+        passedDepartment = true;
+        break;
+      }
     }
-    return false;
   }
 
-  var deptState = store.state.departments;
-  for (var i = 0; i < deptState.all.length; i++) {
-    var dept = deptState.all[i];
-    if (selected.indexOf(dept.id) === -1) continue;
-    if (dept.project_ids && dept.project_ids.indexOf(row.id) !== -1) return true;
+  // Resource filter: check if this project has at least one selected resource
+  var selectedResources = store.getSelected('resources');
+  if (selectedResources.length) {
+    passedResource = false;
+    var resState = store.state.resources;
+    for (var i = 0; i < resState.all.length; i++) {
+      var resource = resState.all[i];
+      if (selectedResources.indexOf(resource.id) === -1) continue;
+      if (resource.project_ids && resource.project_ids.indexOf(row.id) !== -1) {
+        passedResource = true;
+        break;
+      }
+    }
   }
-  return false;
+
+  return passedDepartment && passedResource;
 }
 
 function narrowResources(row, store) {
@@ -218,7 +238,7 @@ var FILTERS = {
     name: 'projects',
     selector: '#f_project',
     emits: 'PROJECT_CHANGED',
-    narrowedBy: ['DEPARTMENT_CHANGED'],
+    narrowedBy: ['DEPARTMENT_CHANGED', 'RESOURCE_CHANGED'],
     narrowFn: narrowProjects
   }),
   resources: new FilterWidget({
@@ -331,7 +351,7 @@ function _getBreakdown(name, state) {
 
 function _getTopDownInfo(name) {
   var sources = {
-    projects: ['Department'],
+    projects: ['Department', 'Resource'],
     resources: ['Project'],
     allocations: ['Project', 'Resource', 'Alloc Status']
   };

@@ -91,6 +91,32 @@ class ResendFailedView(StaffRequiredMixin, View):
         return redirect("notifications:campaign-detail", pk=campaign.pk)
 
 
+class DraftDeleteView(StaffRequiredMixin, TemplateView):
+    """Confirm and hard-delete a draft campaign."""
+
+    template_name = "coldfront_notifications/draft_delete_confirm.html"
+
+    def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
+        context = super().get_context_data(**kwargs)
+        context["campaign"] = get_object_or_404(
+            NotificationCampaign,
+            pk=kwargs["pk"],
+            status=NotificationCampaign.Status.DRAFT,
+        )
+        return context
+
+    def post(self, request, *args: Any, **kwargs: Any):
+        campaign = get_object_or_404(
+            NotificationCampaign,
+            pk=kwargs["pk"],
+            status=NotificationCampaign.Status.DRAFT,
+        )
+        subject = campaign.subject[:50] or "(no subject)"
+        campaign.delete()
+        messages.success(request, f'Draft "{subject}" deleted.')
+        return redirect("notifications:campaign-list")
+
+
 class ResendComposeView(StaffRequiredMixin, TemplateView):
     """Review-and-resend page pre-filled from an existing campaign."""
 

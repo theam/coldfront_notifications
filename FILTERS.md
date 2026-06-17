@@ -47,12 +47,17 @@ and `DepartmentFilter.initial_options()` both use this join chain.
 Top-down narrowing:
 
   Department → Projects → Resources
+                  ↑           ↓
+                  └── Resource narrows Projects too
                        → Allocations ← Statuses
-                                     ← Resources
 
-Bottom-up selection:
+Bottom-up context (detail cards only, no dropdown changes):
 
-  Role → auto-selects Departments (if no manual dept selections)
+  Allocation → shows Dept, Project, Resource, Status
+  Project    → shows Department
+  Role       → shows Departments and project count
+  Resource   → shows Departments and project count
+  Status     → shows matching allocation count
 ```
 
 ## State Model

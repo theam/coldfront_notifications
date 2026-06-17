@@ -2,7 +2,7 @@
 from .dashboard import DashboardView  # noqa: F401
 from .campaigns import (  # noqa: F401
     CampaignListView, CampaignDetailView, CampaignProgressView,
-    ResendFailedView, ResendComposeView,
+    DraftDeleteView, ResendFailedView, ResendComposeView,
 )
 from .compose import (  # noqa: F401
     ComposeView, RecipientCountView,

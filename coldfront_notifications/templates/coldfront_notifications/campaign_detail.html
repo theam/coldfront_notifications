@@ -11,6 +11,9 @@
         <a href="{% url 'notifications:compose' %}?draft={{ campaign.pk }}" class="btn btn-primary btn-sm">
           <i class="fas fa-edit mr-1"></i>Edit Draft
         </a>
+        <a href="{% url 'notifications:draft-delete' campaign.pk %}" class="btn btn-outline-danger btn-sm ml-1">
+          <i class="fas fa-trash mr-1"></i>Delete
+        </a>
         {% else %}
         <a href="{% url 'notifications:resend-compose' campaign.pk %}" class="btn btn-outline-primary btn-sm">
           <i class="fas fa-clone mr-1"></i>Resend

@@ -39,7 +39,7 @@
         {% for c in campaigns %}
         <tr>
           <td class="text-muted" style="font-family:monospace;">{{ c.pk|stringformat:"03d" }}</td>
-          <td><a href="{% url 'notifications:campaign-detail' c.pk %}">{{ c.subject }}</a></td>
+          <td><a href="{% url 'notifications:campaign-detail' c.pk %}">{% if c.subject %}{{ c.subject }}{% else %}<em class="text-muted">No subject</em>{% endif %}</a></td>
           <td><span class="badge badge-secondary" style="font-family:monospace;font-size:.7rem;">{{ c.template.slug|default:"—" }}</span></td>
           <td class="text-right" style="font-family:monospace;">{{ c.recipient_count }}</td>
           <td class="text-right text-success" style="font-family:monospace;">{{ c.delivered_count }}</td>
@@ -57,6 +57,9 @@
             {% if c.status == 'draft' %}
             <a href="{% url 'notifications:compose' %}?draft={{ c.pk }}" class="btn btn-outline-secondary btn-sm" style="font-size:.72rem;">
               <i class="fas fa-edit mr-1"></i>Edit
+            </a>
+            <a href="{% url 'notifications:draft-delete' c.pk %}" class="btn btn-outline-danger btn-sm" style="font-size:.72rem;">
+              <i class="fas fa-trash mr-1"></i>Delete
             </a>
             {% endif %}
           </td>
