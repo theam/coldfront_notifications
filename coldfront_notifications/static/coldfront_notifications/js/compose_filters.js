@@ -13,7 +13,7 @@
 //   Resource also narrows projects (bidirectional with cycle guard).
 // - Bottom-up (inform): selecting a child filter shows context in the
 //   detail cards (e.g. which departments/projects an allocation belongs to)
-//   without modifying upstream dropdowns (except resource → projects).
+//   without modifying upstream dropdowns (except resource → projects)
 //
 // Globals used:    FILTER_DATA (from Django template)
 // Globals exported: collectFilters, getDedupeUsers, setDedupeUsers

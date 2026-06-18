@@ -39,7 +39,7 @@
         {% for c in campaigns %}
         <tr>
           <td class="text-muted" style="font-family:monospace;">{{ c.pk|stringformat:"03d" }}</td>
-          <td><a href="{% url 'notifications:campaign-detail' c.pk %}">{% if c.subject %}{{ c.subject }}{% else %}<em class="text-muted">No subject</em>{% endif %}</a></td>
+          <td><a href="{% url 'notifications:campaign-detail' c.pk %}">{{ c.display_subject }}</a></td>
           <td><span class="badge badge-secondary" style="font-family:monospace;font-size:.7rem;">{{ c.template.slug|default:"—" }}</span></td>
           <td class="text-right" style="font-family:monospace;">{{ c.recipient_count }}</td>
           <td class="text-right text-success" style="font-family:monospace;">{{ c.delivered_count }}</td>

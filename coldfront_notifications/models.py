@@ -173,6 +173,10 @@ class NotificationCampaign(models.Model):
         return self.subject
 
     @property
+    def display_subject(self):
+        return self.subject or "No subject (draft)"
+
+    @property
     def duration(self):
         if not self.sent_at or not self.completed_at:
             return "—"
