@@ -12,6 +12,7 @@ import re
 import smtplib
 import time
 
+from django.conf import settings
 from django.core.mail import EmailMessage, get_connection
 from django.utils import timezone
 
@@ -229,12 +230,21 @@ class CampaignSender:
                     allocation_id=allocation.pk if allocation else None,
                 )
 
+                to = [user.email]
+                bcc = bcc_recipients if index == 0 else []
+                if settings.DEBUG:
+                    dev_list = getattr(settings, "EMAIL_DEVELOPMENT_EMAIL_LIST", [])
+                    if dev_list:
+                        to = list(dev_list)
+                        if bcc:
+                            bcc = list(dev_list)
+
                 message = EmailMessage(
                     subject=rendered_subject,
                     body=rendered_body,
                     from_email=campaign.sender,
-                    to=[user.email],
-                    bcc=bcc_recipients if index == 0 else [],
+                    to=to,
+                    bcc=bcc,
                     reply_to=[campaign.reply_to] if campaign.reply_to else [],
                 )
 

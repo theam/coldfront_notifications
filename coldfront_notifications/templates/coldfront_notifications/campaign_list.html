@@ -53,14 +53,10 @@
             {% elif c.status == 'draft' %}<span class="badge badge-secondary">Draft</span>
             {% else %}<span class="badge badge-secondary">{{ c.status }}</span>{% endif %}
           </td>
-          <td>
+          <td class="text-right" style="white-space:nowrap;">
             {% if c.status == 'draft' %}
-            <a href="{% url 'notifications:compose' %}?draft={{ c.pk }}" class="btn btn-outline-secondary btn-sm" style="font-size:.72rem;">
-              <i class="fas fa-edit mr-1"></i>Edit
-            </a>
-            <a href="{% url 'notifications:draft-delete' c.pk %}" class="btn btn-outline-danger btn-sm" style="font-size:.72rem;">
-              <i class="fas fa-trash mr-1"></i>Delete
-            </a>
+            <a href="{% url 'notifications:compose' %}?draft={{ c.pk }}" class="btn btn-link btn-sm p-0 mr-2" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{% url 'notifications:draft-delete' c.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete"><i class="fas fa-trash"></i></a>
             {% endif %}
           </td>
         </tr>
