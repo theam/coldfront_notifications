@@ -22,6 +22,7 @@
         <a href="?status=sent" class="btn {% if status_filter == 'sent' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Sent</a>
         <a href="?status=partial" class="btn {% if status_filter == 'partial' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Partial</a>
         <a href="?status=failed" class="btn {% if status_filter == 'failed' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Failed</a>
+        <a href="?status=draft" class="btn {% if status_filter == 'draft' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Draft</a>
       </div>
     </div>
   </div>
@@ -31,14 +32,14 @@
         <tr>
           <th>#</th><th>Subject</th><th>Template</th>
           <th class="text-right">Recipients</th><th class="text-right">Delivered</th>
-          <th class="text-right">Failed</th><th>Sent At</th><th>Status</th>
+          <th class="text-right">Failed</th><th>Sent At</th><th>Status</th><th></th>
         </tr>
       </thead>
       <tbody>
         {% for c in campaigns %}
         <tr>
           <td class="text-muted" style="font-family:monospace;">{{ c.pk|stringformat:"03d" }}</td>
-          <td><a href="{% url 'notifications:campaign-detail' c.pk %}">{{ c.subject }}</a></td>
+          <td><a href="{% url 'notifications:campaign-detail' c.pk %}">{{ c.display_subject }}</a></td>
           <td><span class="badge badge-secondary" style="font-family:monospace;font-size:.7rem;">{{ c.template.slug|default:"—" }}</span></td>
           <td class="text-right" style="font-family:monospace;">{{ c.recipient_count }}</td>
           <td class="text-right text-success" style="font-family:monospace;">{{ c.delivered_count }}</td>
@@ -52,9 +53,15 @@
             {% elif c.status == 'draft' %}<span class="badge badge-secondary">Draft</span>
             {% else %}<span class="badge badge-secondary">{{ c.status }}</span>{% endif %}
           </td>
+          <td class="text-right" style="white-space:nowrap;">
+            {% if c.status == 'draft' %}
+            <a href="{% url 'notifications:compose' %}?draft={{ c.pk }}" class="btn btn-link btn-sm p-0 mr-2" title="Edit"><i class="fas fa-edit"></i></a>
+            <a href="{% url 'notifications:draft-delete' c.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete"><i class="fas fa-trash"></i></a>
+            {% endif %}
+          </td>
         </tr>
         {% empty %}
-        <tr><td colspan="8" class="text-center text-muted py-4">No notifications yet. <a href="{% url 'notifications:compose' %}">Send one →</a></td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-4">No notifications yet. <a href="{% url 'notifications:compose' %}">Send one →</a></td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -5,23 +5,25 @@ A [ColdFront](https://coldfront.readthedocs.io/) plugin for sending bulk email n
 ## Features
 
 ### Compose & Send
-- **Cascading recipient filters** — filter by Project, Department, Allocation, Resource, Allocation Status, and User Role. Each filter narrows the downstream options in real time.
+- **Cascading recipient filters** — filter by Department, Project, Resource, Allocation Status, Allocation, and User Role. All filter data loads once on page load; cross-filter narrowing happens entirely client-side with zero AJAX round-trips. See [FILTERS.md](FILTERS.md) for the full architecture.
+- **Bidirectional cascade** — top-down (department narrows projects, resources, allocations) and bottom-up (selecting a role auto-selects matching departments).
 - **Template-based composition** — pick a saved template or write a one-off. Templates support `{{variable}}` placeholders that resolve per recipient.
 - **Live email preview** — preview the rendered email for sample recipients before sending. A dropdown lets you switch between recipients to see how variable substitution looks for each.
 - **Per-user dedupe control** — users matched on multiple projects/allocations can receive one email per context or be deduped to one. Controlled per-user in the recipient preview with a "Dedupe all" option.
 - **Pre-flight validation** — checks every `{{token}}` resolves for every recipient before enabling Send. Unknown tokens, empty values, and resolution errors are surfaced with clear messages.
+- **Draft auto-save** — compose progress is auto-saved every 30 seconds. Drafts are visible in the notifications list and can be resumed at any time. Navigate away without losing work.
 - **Per-email delivery** — each recipient gets an individually addressed email with their specific variable substitution. No bulk BCC.
 
 ### Template Variables
-- **Query variables** — auto-resolved per recipient from ColdFront data. 28 built-in resolver paths covering Recipient, Project, PI, Department, Role, Allocation, and Resource fields.
+- **Query variables** — auto-resolved per recipient from ColdFront data. Built-in resolver paths covering Recipient, Project, PI, Department, Role, Allocation, and Resource fields.
 - **Manual variables** — fixed values defined once at creation time and reused across all notifications (e.g. a maintenance date, a renewal URL).
 - **Full CRUD UI** — create, edit, soft-delete variables from the plugin's own interface. Query variables pick from a whitelisted dropdown; manual variables store a typed value.
 
 ### Notifications
 - **Dashboard** — stat cards (Total Delivered, Sending Now, Failed 30d, Total Notifications) plus a recent notifications table.
 - **Notification detail** — live delivery progress (AJAX polling), per-recipient log with status badges, and a view icon showing the exact rendered email as delivered.
+- **Notification list** — status filter tabs (All, Sent, Partial, Failed, Draft) with Edit action on drafts.
 - **Resend failed** — one-click resend to failed recipients.
-- **Soft delete** — deleted templates and variables remain visible (crossed out) on past notification details.
 
 ### Settings
 - **Sender & Reply-To management** — configure available From/Reply-To addresses with default flags.
@@ -65,6 +67,14 @@ INSTALLED_APPS += ["coldfront_notifications"]
 
 EXTRA_APPS_URLS = [
     ("notifications/", "coldfront_notifications.urls", "notifications"),
+]
+
+# Templates and static files (adjust the path to your install location)
+TEMPLATES[0]['DIRS'] += [
+    '/usr/src/app/coldfront_notifications/coldfront_notifications/templates',
+]
+STATICFILES_DIRS += [
+    '/usr/src/app/coldfront_notifications/coldfront_notifications/static',
 ]
 ```
 
@@ -110,7 +120,7 @@ with open('coldfront_notifications/coldfront_notifications/fixtures/variables.js
 "
 ```
 
-Or create your own variables from the UI: **Notifications → Template Variables → New Variable**.
+Or create your own variables from the UI: **Notifications > Template Variables > New Variable**.
 
 ### Configure sender addresses
 
@@ -120,7 +130,7 @@ If your ColdFront instance has `EMAIL_SENDER`, `EMAIL_TICKET_SYSTEM_ADDRESS`, or
 python manage.py seed_notification_senders
 ```
 
-Safe to re-run — skips addresses that already exist. You can also manage addresses manually at **Notifications → Settings**.
+Safe to re-run — skips addresses that already exist. You can also manage addresses manually at **Notifications > Settings**.
 
 ---
 
@@ -187,13 +197,30 @@ No code changes — the SMTP path is identical.
 
 ---
 
+## Module Structure
+
+| Module | Purpose |
+|---|---|
+| `models.py` | NotificationCampaign, NotificationLog, NotificationTemplate, NotificationVariable, SenderConfig |
+| `filters.py` | FilterDataBuilder, RecipientResolver, 6 filter classes |
+| `template_variable_value_resolver.py` | ResolverRegistry, resolver groups, ResolverContext |
+| `notification_validator.py` | NotificationValidator, extract_tokens, determine_scope |
+| `campaign_sender.py` | CampaignSender, TemplateRenderer, SmtpDelivery, Celery task |
+| `views/compose.py` | ComposeView, RecipientCountView, PreviewRenderView, ValidateView, DraftSaveView |
+| `views/campaigns.py` | CampaignListView, CampaignDetailView, ResendFailedView, ResendComposeView |
+| `views/templates.py` | TemplateListView, TemplateFormView, TemplateDeleteView, TemplateJsonView |
+| `views/settings.py` | VariableListView, VariableFormView, SettingsView, SenderFormView |
+| `views/helpers.py` | StaffRequiredMixin, dispatch_send |
+
+---
+
 ## Navigation
 
 | Menu item | Path | Description |
 |---|---|---|
 | Dashboard | `/notifications/` | Stats + recent notifications |
-| Notifications | `/notifications/campaigns/` | Full list with status filter |
-| Compose Notification | `/notifications/compose/` | Build and send |
+| Notifications | `/notifications/campaigns/` | Full list with status filter (incl. Draft) |
+| Compose Notification | `/notifications/compose/` | Build and send (or `?draft=<pk>` to resume) |
 | Templates | `/notifications/templates/` | Create/edit/delete templates |
 | Template Variables | `/notifications/variables/` | Create/edit/delete `{{token}}` definitions |
 | Settings | `/notifications/settings/` | Sender/reply-to addresses |

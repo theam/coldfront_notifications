@@ -271,9 +271,9 @@
 <script>
 var SNAPSHOT = {{ snapshot_json|safe }};
 var URLS = {
-  previewRender:  '{% url "notifications:preview-render" %}',
-  recipientCount: '{% url "notifications:recipient-count" %}',
-  validate:       '{% url "notifications:validate" %}'
+  previewRender:  '{% url "notifications:api-preview-render" %}',
+  recipientCount: '{% url "notifications:api-recipient-count" %}',
+  validate:       '{% url "notifications:api-validate" %}'
 };
 </script>
 <script>

@@ -1,6 +1,10 @@
+import re
+
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth import get_user_model
+
+from .template_variable_value_resolver import registry as resolver_registry
 
 User = get_user_model()
 
@@ -14,50 +18,42 @@ class NotificationVariable(models.Model):
     source=manual  → admin types a value at compose time; stored on
                      NotificationCampaign.extra_context.
     """
-    SOURCE_QUERY  = "query"
-    SOURCE_MANUAL = "manual"
-    SOURCE_CHOICES = [
-        (SOURCE_QUERY,  "Query (auto-resolved from data)"),
-        (SOURCE_MANUAL, "Manual (admin enters per-campaign)"),
-    ]
 
-    WIDGET_TEXT     = "text"
-    WIDGET_TEXTAREA = "textarea"
-    WIDGET_DATE     = "date"
-    WIDGET_DATETIME = "datetime"
-    WIDGET_URL      = "url"
-    WIDGET_CHOICES = [
-        (WIDGET_TEXT,     "Text"),
-        (WIDGET_TEXTAREA, "Multi-line text"),
-        (WIDGET_DATE,     "Date"),
-        (WIDGET_DATETIME, "Date & Time"),
-        (WIDGET_URL,      "URL"),
-    ]
+    class Source(models.TextChoices):
+        QUERY = "query", "Query (auto-resolved from data)"
+        MANUAL = "manual", "Manual (admin enters per-campaign)"
 
-    key          = models.SlugField(
+    class Widget(models.TextChoices):
+        TEXT = "text", "Text"
+        TEXTAREA = "textarea", "Multi-line text"
+        DATE = "date", "Date"
+        DATETIME = "datetime", "Date & Time"
+        URL = "url", "URL"
+
+    key = models.SlugField(
         max_length=60, unique=True,
         help_text="Token used in {{key}} placeholders (letters, digits, _)",
     )
-    label        = models.CharField(max_length=120)
-    description  = models.CharField(max_length=255, blank=True)
-    example      = models.CharField(max_length=255, blank=True)
-    source       = models.CharField(max_length=10, choices=SOURCE_CHOICES)
+    label = models.CharField(max_length=120)
+    description = models.CharField(max_length=255, blank=True)
+    example = models.CharField(max_length=255, blank=True)
+    source = models.CharField(max_length=10, choices=Source.choices)
     resolver_key = models.CharField(
         max_length=80, blank=True,
         help_text="Required when source=query; must match a registered resolver",
     )
     input_widget = models.CharField(
-        max_length=10, choices=WIDGET_CHOICES, default=WIDGET_TEXT,
+        max_length=10, choices=Widget.choices, default=Widget.TEXT,
         help_text="Input type for the Value field when source=manual",
     )
-    value        = models.TextField(
+    value = models.TextField(
         blank=True, default="",
         help_text="Fixed value used for every campaign (manual variables only).",
     )
-    is_required  = models.BooleanField(default=True)
-    is_deleted   = models.BooleanField(default=False)
-    created      = models.DateTimeField(auto_now_add=True)
-    modified     = models.DateTimeField(auto_now=True)
+    is_required = models.BooleanField(default=True)
+    is_deleted = models.BooleanField(default=False)
+    created = models.DateTimeField(auto_now_add=True)
+    modified = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["key"]
@@ -66,11 +62,10 @@ class NotificationVariable(models.Model):
         return f"{{{{{self.key}}}}} ({self.get_source_display()})"
 
     def clean(self):
-        from .resolvers import QUERY_RESOLVERS
-        if self.source == self.SOURCE_QUERY:
+        if self.source == self.Source.QUERY:
             if not self.resolver_key:
                 raise ValidationError({"resolver_key": "Required when source is Query."})
-            if self.resolver_key not in QUERY_RESOLVERS:
+            if self.resolver_key not in resolver_registry.resolvers:
                 raise ValidationError({
                     "resolver_key":
                     f"'{self.resolver_key}' is not a registered resolver.",
@@ -87,10 +82,9 @@ class NotificationVariable(models.Model):
     @property
     def required_scope(self):
         """Which context element the resolver depends on ('user', 'project', 'allocation', or None)."""
-        from .resolvers import QUERY_SCOPES
-        if self.source == self.SOURCE_MANUAL:
+        if self.source == self.Source.MANUAL:
             return None
-        return QUERY_SCOPES.get(self.resolver_key)
+        return resolver_registry.scopes.get(self.resolver_key)
 
 
 class SenderConfig(models.Model):
@@ -121,7 +115,6 @@ class NotificationTemplate(models.Model):
     @property
     def variables(self):
         """Extract {{variable}} placeholders from subject + body."""
-        import re
         pattern = re.compile(r"\{\{(\w+)\}\}")
         found = pattern.findall(self.subject) + pattern.findall(self.body)
         # deduplicate preserving order
@@ -137,20 +130,14 @@ class NotificationTemplate(models.Model):
 
 
 class NotificationCampaign(models.Model):
-    STATUS_QUEUED = "queued"
-    STATUS_SENDING = "sending"
-    STATUS_SENT = "sent"
-    STATUS_PARTIAL = "partial"
-    STATUS_FAILED = "failed"
-    STATUS_DRAFT = "draft"
-    STATUS_CHOICES = [
-        (STATUS_QUEUED,   "Queued"),
-        (STATUS_SENDING,  "Sending"),
-        (STATUS_SENT,     "Sent"),
-        (STATUS_PARTIAL,  "Partial"),
-        (STATUS_FAILED,   "Failed"),
-        (STATUS_DRAFT,    "Draft"),
-    ]
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        SENDING = "sending", "Sending"
+        SENT = "sent", "Sent"
+        PARTIAL = "partial", "Partial"
+        FAILED = "failed", "Failed"
+        DRAFT = "draft", "Draft"
 
     template = models.ForeignKey(
         NotificationTemplate,
@@ -162,28 +149,32 @@ class NotificationCampaign(models.Model):
     body = models.TextField()
     sender = models.EmailField()
     reply_to = models.EmailField(blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.DRAFT)
 
     # filters snapshot (JSON)
     filters_snapshot = models.JSONField(default=dict, blank=True)
 
     # Admin-supplied values for source=manual variables ({"maint_date": "...", ...})
-    extra_context    = models.JSONField(default=dict, blank=True)
+    extra_context = models.JSONField(default=dict, blank=True)
 
     recipient_count = models.PositiveIntegerField(default=0)
     delivered_count = models.PositiveIntegerField(default=0)
-    failed_count    = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
 
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="notification_campaigns",
     )
-    sent_at      = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
-    created_at   = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.subject
+
+    @property
+    def display_subject(self):
+        return self.subject or "No subject (draft)"
 
     @property
     def duration(self):
@@ -228,28 +219,24 @@ class NotificationCampaign(models.Model):
 
 
 class NotificationLog(models.Model):
-    STATUS_QUEUED    = "queued"
-    STATUS_DELIVERED = "delivered"
-    STATUS_BOUNCED   = "bounced"
-    STATUS_FAILED    = "failed"
-    STATUS_CHOICES = [
-        (STATUS_QUEUED,    "Queued"),
-        (STATUS_DELIVERED, "Delivered"),
-        (STATUS_BOUNCED,   "Bounced"),
-        (STATUS_FAILED,    "Failed"),
-    ]
 
-    campaign  = models.ForeignKey(
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        DELIVERED = "delivered", "Delivered"
+        BOUNCED = "bounced", "Bounced"
+        FAILED = "failed", "Failed"
+
+    campaign = models.ForeignKey(
         NotificationCampaign,
         on_delete=models.CASCADE,
         related_name="logs",
     )
-    email     = models.EmailField()
-    status    = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_QUEUED)
+    email = models.EmailField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.QUEUED)
     timestamp = models.DateTimeField(auto_now_add=True)
     notes     = models.TextField(blank=True)
     rendered_subject = models.TextField(blank=True, default="")
-    rendered_body    = models.TextField(blank=True, default="")
+    rendered_body = models.TextField(blank=True, default="")
     # Per-email context (one log row = one sent email)
     project_id    = models.IntegerField(null=True, blank=True, db_index=True)
     allocation_id = models.IntegerField(null=True, blank=True, db_index=True)

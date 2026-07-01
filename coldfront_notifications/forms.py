@@ -1,18 +1,18 @@
 from django import forms
 from django.utils.text import slugify
 from .models import NotificationTemplate, NotificationVariable, SenderConfig
-from .resolvers import QUERY_CHOICES
+from .template_variable_value_resolver import registry as resolver_registry
 
 
 class NotificationVariableForm(forms.ModelForm):
     """Plugin-side form (Bootstrap-themed). Restricts resolver_key to the
-    whitelisted QUERY_CHOICES so admins can't invent arbitrary ORM paths."""
+    whitelisted resolver_registry.choices so admins can't invent arbitrary ORM paths."""
 
     resolver_key = forms.ChoiceField(
         required=False,
         choices=(
             [("", "— choose a query source —")]
-            + [(k, f"{group}: {label}") for (k, label, group) in QUERY_CHOICES]
+            + [(k, f"{group}: {label}") for (k, label, group) in resolver_registry.choices]
         ),
         widget=forms.Select(attrs={"class": "form-control"}),
     )
@@ -38,12 +38,12 @@ class NotificationVariableForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         source = cleaned.get("source")
-        if source == NotificationVariable.SOURCE_MANUAL:
+        if source == NotificationVariable.Source.MANUAL:
             cleaned["resolver_key"] = ""
             required = cleaned.get("is_required", True)
             if required and not (cleaned.get("value") or "").strip():
                 self.add_error("value", "Required when source is Manual.")
-        elif source == NotificationVariable.SOURCE_QUERY:
+        elif source == NotificationVariable.Source.QUERY:
             cleaned["value"] = ""
             if not cleaned.get("resolver_key"):
                 self.add_error("resolver_key", "Required when source is Query.")

@@ -23,110 +23,57 @@
         </a>
         <i class="fas fa-users mr-1"></i> Recipients
       </h3>
-      <span class="bcc-badge"><i class="fas fa-eye-slash"></i> All recipients will be BCC'd</span>
     </div>
   </div>
   <div class="collapse show" id="recipients-body">
     <div class="card-body">
-      <!-- Row 1: filters -->
+      <!-- Row 1: filters (ordered by tier: T1 → T2 → T3) -->
       <div class="recip-filters">
         <div>
-          <label class="flbl">Project</label>
-          <select class="s2" id="f_project" multiple data-placeholder="Any project">
-            {% for p in projects %}
-            <option value="{{ p.pk }}">{{ p.title }}</option>
-            {% empty %}
-            <option value="1">astro-gpu-2025</option>
-            <option value="2">climate-hpc-q2</option>
-            <option value="3">bio-seq-pipeline</option>
-            <option value="4">ml-training-lab</option>
-            <option value="5">chem-sim-2024</option>
-            <option value="6">physics-lhc-data</option>
-            <option value="7">neuro-imaging-lab</option>
-            <option value="8">genomics-hpc-2025</option>
-            <option value="9">astrophysics-cannon</option>
-            <option value="10">data-science-fellows</option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div>
-          <label class="flbl">Allocation</label>
-          <select class="s2" id="f_allocation" multiple data-placeholder="Any allocation">
-            {% for a in allocations %}
-            <option value="{{ a.pk }}">{{ a.project.title }} — {{ a.get_parent_resource }}</option>
-            {% empty %}
-            <option value="101">AL-00101 — Cannon Cluster</option>
-            <option value="102">AL-00102 — Cannon Cluster</option>
-            <option value="103">AL-00103 — FASSE</option>
-            <option value="104">AL-00104 — Holyoke GPU</option>
-            <option value="105">AL-00105 — Cannon Cluster</option>
-            <option value="106">AL-00106 — OpenMind</option>
-            <option value="107">AL-00107 — FASSE</option>
-            <option value="108">AL-00108 — Holyoke GPU</option>
-            <option value="109">AL-00109 — Cannon Cluster</option>
-            <option value="110">AL-00110 — OpenMind</option>
-            {% endfor %}
-          </select>
-        </div>
-
-        <div>
           <label class="flbl">Department</label>
-          <select class="s2" id="f_dept" multiple data-placeholder="Any department">
-            {% for d in departments %}
-            <option value="{{ d }}">{{ d }}</option>
-            {% endfor %}
-          </select>
+          <select class="s2" id="f_dept" multiple data-placeholder="Any department"></select>
+        </div>
+
+        <div>
+          <label class="flbl">Project</label>
+          <select class="s2" id="f_project" multiple data-placeholder="Any project"></select>
         </div>
 
         <div>
           <label class="flbl">Resource</label>
-          <select class="s2" id="f_resource" multiple data-placeholder="Any resource">
-            {% for r in resources %}
-            <option value="{{ r.pk }}">{{ r.name }}</option>
-            {% empty %}
-            <option value="1">Cannon Cluster</option>
-            <option value="2">FASSE</option>
-            <option value="3">Holyoke GPU</option>
-            <option value="4">OpenMind</option>
-            <option value="5">Odyssey (Legacy)</option>
-            {% endfor %}
-          </select>
+          <select class="s2" id="f_resource" multiple data-placeholder="Any resource"></select>
         </div>
 
         <div>
           <label class="flbl">Allocation Status</label>
-          <select class="s2" id="f_status" multiple data-placeholder="Any status">
-            {% for s in statuses %}
-            <option value="{{ s }}">{{ s }}</option>
-            {% empty %}
-            <option value="Active">Active</option>
-            <option value="Expiring Soon">Expiring Soon</option>
-            <option value="Expired">Expired</option>
-            <option value="New">New</option>
-            <option value="Pending">Pending</option>
-            <option value="Denied">Denied</option>
-            <option value="Archived">Archived</option>
-            {% endfor %}
-          </select>
+          <select class="s2" id="f_status" multiple data-placeholder="Any status"></select>
+        </div>
+
+        <div>
+          <label class="flbl">Allocation</label>
+          <select class="s2" id="f_allocation" multiple data-placeholder="Any allocation"></select>
         </div>
 
         <div>
           <label class="flbl">User Role</label>
-          <select class="s2" id="f_role" multiple data-placeholder="Any role">
-            {% for r in roles %}
-            <option value="{{ r }}">{{ r }}</option>
-            {% empty %}
-            <option value="PI">PI</option>
-            <option value="Manager">Manager</option>
-            <option value="User">User</option>
-            {% endfor %}
-          </select>
+          <select class="s2" id="f_role" multiple data-placeholder="Any role"></select>
         </div>
       </div>
 
-      <!-- Row 2: count + actions -->
+      <!-- Row 2: actions + count pill -->
       <div class="recip-actions">
+        <div class="recip-actions-left">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="recalcBtn">
+            <i class="fas fa-check-double mr-1"></i>Validate
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm"
+                  id="previewRecipBtn" disabled>
+            <i class="fas fa-eye mr-1"></i>Recipient Preview
+          </button>
+          <button type="button" class="btn btn-outline-danger btn-sm" id="clearFiltersBtn" style="display:none;">
+            <i class="fas fa-times mr-1"></i>Clear Filters
+          </button>
+        </div>
         <div class="recip-count-pill">
           <div class="recip-count-num" id="recipNum">—</div>
           <div class="recip-count-lbl" id="recipLbl">recipients</div>
@@ -134,14 +81,13 @@
             <span id="emailCount">—</span> emails<span id="multiBadge" style="display:none;"> · <span id="multiCount">0</span> multi</span>
           </div>
         </div>
-        <button type="button" class="btn btn-outline-secondary btn-sm" id="recalcBtn">
-          <i class="fas fa-check-double mr-1"></i>Validate
-        </button>
-        <button type="button" class="btn btn-outline-secondary btn-sm"
-                id="previewRecipBtn" disabled>
-          <i class="fas fa-eye mr-1"></i>Recipient Preview
-        </button>
       </div>
+
+      <!-- Row 3: filter breakdown details -->
+      <div class="recip-details" id="filterDetails"></div>
+
+      <!-- Row 4: validation result (mirrors the bottom panel) -->
+      <div id="topValidationResult" style="display:none; margin-top:10px;"></div>
     </div>
   </div>
 </div>
@@ -168,7 +114,7 @@
       </div>
       <div class="tmpl-list">
         {% for t in templates %}
-        <div class="tmpl-item {% if forloop.first %}active{% endif %}"
+        <div class="tmpl-item"
              data-id="{{ t.pk }}"
              data-slug="{{ t.slug }}">
           <div class="tmpl-name">{{ t.name }}</div>
@@ -194,6 +140,7 @@
     <form method="post" id="notifForm">
       {% csrf_token %}
       <input type="hidden" name="template_id" id="hidden_template_id">
+      <input type="hidden" name="draft_pk" id="hidden_draft_pk" value="">
       <input type="hidden" name="recipient_count" id="hidden_recip_count" value="0">
       <input type="hidden" name="filter_projects" id="h_projects">
       <input type="hidden" name="filter_allocations" id="h_allocations">
@@ -290,6 +237,7 @@
 
           <!-- Validation results / errors -->
           <div id="validationPanel" style="display:none; margin-bottom:12px;">
+            <div id="filterSummaryBar" style="display:none;margin-bottom:8px;font-size:.8rem;"></div>
             <div id="validationOK" class="alert alert-success py-2" style="display:none;font-size:.84rem;"></div>
             <div id="validationBad" class="alert alert-danger py-2"  style="display:none;font-size:.84rem;">
               <strong id="validationBadTitle"></strong>
@@ -306,19 +254,25 @@
           <div class="send-warn" id="sendWarn" style="display:none;">
             <i class="fas fa-exclamation-triangle"></i>
             <div>
-              <strong>You are about to send <span id="warnCount">0</span> emails via BCC.</strong><br>
+              <strong>You are about to send <span id="warnCount">0</span> emails.</strong><br>
               <span class="text-muted" style="font-size:.79rem;">This action cannot be undone.</span>
             </div>
           </div>
-          <div class="d-flex justify-content-end align-items-center" style="gap:8px;">
-            <button type="button" class="btn btn-outline-secondary" id="recalcBtn2">
-              <i class="fas fa-check-double mr-1"></i>Validate
-            </button>
-            <button type="submit" class="btn btn-primary" id="sendBtn"
-                    name="action" value="send" disabled>
-              <i class="fas fa-paper-plane mr-1"></i>
-              Send <span id="sendCount">—</span> Emails
-            </button>
+          <div class="d-flex justify-content-between align-items-center">
+            <span id="draftStatus" style="font-size:.75rem;color:#6c757d;"></span>
+            <div class="d-flex align-items-center" style="gap:8px;">
+              <button type="button" class="btn btn-outline-secondary" id="recalcBtn2">
+                <i class="fas fa-check-double mr-1"></i>Validate
+              </button>
+              <button type="button" class="btn btn-outline-info" id="saveDraftBtn">
+                <i class="fas fa-save mr-1"></i>Save Draft
+              </button>
+              <button type="submit" class="btn btn-primary" id="sendBtn"
+                      name="action" value="send" disabled>
+                <i class="fas fa-paper-plane mr-1"></i>
+                Send <span id="sendCount">—</span> Emails
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -447,6 +401,7 @@
   </div>
 </div>
 
+
 {% endblock %}
 
 {% block javascript %}
@@ -454,13 +409,20 @@
 // Server-rendered data (needs Django context)
 var TEMPLATES = {{ templates_json|safe }};
 var VARIABLES = {{ variables_json|safe }};
-// Django URL endpoints for AJAX calls
+var FILTER_DATA = {{ filter_data_json|safe }};
+var DRAFT_DATA = {{ draft_json|safe }};
 var URLS = {
-  previewRender:  '{% url "notifications:preview-render" %}',
-  filterOptions:  '{% url "notifications:filter-options" %}',
-  validate:       '{% url "notifications:validate" %}',
-  recipientCount: '{% url "notifications:recipient-count" %}'
+  previewRender:  '{% url "notifications:api-preview-render" %}',
+  validate:       '{% url "notifications:api-validate" %}',
+  recipientCount: '{% url "notifications:api-recipient-count" %}',
+  templateJson:   '{% url "notifications:template-json" pk=0 %}'.replace('/0/', '/{id}/'),
+  draftSave:      '{% url "notifications:api-draft-save" %}'
 };
 </script>
-<script src="{% static 'coldfront_notifications/js/compose.js' %}"></script>
+<script src="{% static 'coldfront_notifications/js/compose_filters.js' %}"></script>
+<script src="{% static 'coldfront_notifications/js/compose_validate.js' %}"></script>
+<script src="{% static 'coldfront_notifications/js/compose_templates.js' %}"></script>
+<script src="{% static 'coldfront_notifications/js/compose_preview.js' %}"></script>
+<script src="{% static 'coldfront_notifications/js/compose_draft.js' %}"></script>
+<script src="{% static 'coldfront_notifications/js/compose_init.js' %}"></script>
 {% endblock %}

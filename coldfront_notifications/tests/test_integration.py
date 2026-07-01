@@ -5,6 +5,7 @@ Requires Django's test database with ColdFront models available.
 """
 import json
 from datetime import timedelta
+import sys
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -38,11 +39,7 @@ from coldfront_notifications.models import (
     NotificationVariable,
     SenderConfig,
 )
-from coldfront_notifications.utils import (
-    build_recipient_queryset,
-    enumerate_recipients,
-    enumerate_recipients_deduped,
-)
+from coldfront_notifications.filters import RecipientResolver
 
 User = get_user_model()
 
@@ -193,15 +190,15 @@ class NotificationIntegrationTestCase(TestCase):
         cls.var_query = NotificationVariable.objects.create(
             key="project_title",
             label="Project Title",
-            source=NotificationVariable.SOURCE_QUERY,
+            source=NotificationVariable.Source.QUERY,
             resolver_key="project.title",
         )
         cls.var_manual = NotificationVariable.objects.create(
             key="maint_date",
             label="Maintenance Date",
-            source=NotificationVariable.SOURCE_MANUAL,
+            source=NotificationVariable.Source.MANUAL,
             value="2026-05-01",
-            input_widget=NotificationVariable.WIDGET_DATE,
+            input_widget=NotificationVariable.Widget.DATE,
         )
 
         # --- NotificationTemplate ---
@@ -229,10 +226,10 @@ class NotificationIntegrationTestCase(TestCase):
 # =============================================================================
 
 class BuildRecipientQuerysetTest(NotificationIntegrationTestCase):
-    """Tests for build_recipient_queryset."""
+    """Tests for RecipientResolver.queryset()."""
 
     def test_no_filters_returns_all_active_users(self):
-        qs = build_recipient_queryset({})
+        qs = RecipientResolver({}).queryset()
         user_pks = set(qs.values_list("pk", flat=True))
         # All 3 users have active ProjectUser memberships
         self.assertIn(self.user1.pk, user_pks)
@@ -240,7 +237,7 @@ class BuildRecipientQuerysetTest(NotificationIntegrationTestCase):
         self.assertIn(self.user3.pk, user_pks)
 
     def test_project_filter(self):
-        qs = build_recipient_queryset({"projects": [self.proj1.pk]})
+        qs = RecipientResolver({"projects": [self.proj1.pk]}).queryset()
         user_pks = set(qs.values_list("pk", flat=True))
         # proj1 has user1 (PI) and user2 (User)
         self.assertIn(self.user1.pk, user_pks)
@@ -248,7 +245,7 @@ class BuildRecipientQuerysetTest(NotificationIntegrationTestCase):
         self.assertNotIn(self.user3.pk, user_pks)
 
     def test_role_filter(self):
-        qs = build_recipient_queryset({"roles": ["Principal Investigator"]})
+        qs = RecipientResolver({"roles": ["Principal Investigator"]}).queryset()
         user_pks = set(qs.values_list("pk", flat=True))
         # Only user1 is PI
         self.assertIn(self.user1.pk, user_pks)
@@ -256,7 +253,7 @@ class BuildRecipientQuerysetTest(NotificationIntegrationTestCase):
         self.assertNotIn(self.user3.pk, user_pks)
 
     def test_department_filter(self):
-        qs = build_recipient_queryset({"departments": ["Engineering Dept"]})
+        qs = RecipientResolver({"departments": ["Engineering Dept"]}).queryset()
         user_pks = set(qs.values_list("pk", flat=True))
         # Only proj1 linked to dept → user1, user2
         self.assertIn(self.user1.pk, user_pks)
@@ -264,7 +261,7 @@ class BuildRecipientQuerysetTest(NotificationIntegrationTestCase):
         self.assertNotIn(self.user3.pk, user_pks)
 
     def test_allocation_status_filter(self):
-        qs = build_recipient_queryset({"statuses": ["Active"]})
+        qs = RecipientResolver({"statuses": ["Active"]}).queryset()
         user_pks = set(qs.values_list("pk", flat=True))
         # All users have active AllocationUser records
         self.assertIn(self.user1.pk, user_pks)
@@ -272,15 +269,15 @@ class BuildRecipientQuerysetTest(NotificationIntegrationTestCase):
         self.assertIn(self.user3.pk, user_pks)
 
     def test_allocation_status_filter_expired_returns_none(self):
-        qs = build_recipient_queryset({"statuses": ["Expired"]})
+        qs = RecipientResolver({"statuses": ["Expired"]}).queryset()
         self.assertEqual(qs.count(), 0)
 
 
 class EnumerateRecipientsTest(NotificationIntegrationTestCase):
-    """Tests for enumerate_recipients."""
+    """Tests for RecipientResolver.enumerate()."""
 
     def test_scope_user_returns_distinct_users(self):
-        results = list(enumerate_recipients({}, "user"))
+        results = list(RecipientResolver({}).enumerate("user"))
         users = [r[0] for r in results]
         user_pks = [u.pk for u in users]
         # Each user appears once, project and allocation are None
@@ -290,7 +287,7 @@ class EnumerateRecipientsTest(NotificationIntegrationTestCase):
             self.assertIsNone(allocation)
 
     def test_scope_project_returns_per_project_user(self):
-        results = list(enumerate_recipients({}, "project"))
+        results = list(RecipientResolver({}).enumerate("project"))
         # user1 on 2 projects, user2 on 1, user3 on 1 → 4 tuples
         self.assertEqual(len(results), 4)
         for user, project, allocation in results:
@@ -298,7 +295,7 @@ class EnumerateRecipientsTest(NotificationIntegrationTestCase):
             self.assertIsNone(allocation)
 
     def test_scope_allocation_returns_per_allocation_user(self):
-        results = list(enumerate_recipients({}, "allocation"))
+        results = list(RecipientResolver({}).enumerate("allocation"))
         # alloc1: user1, user2; alloc2: user1, user3 → 4 tuples
         self.assertEqual(len(results), 4)
         for user, project, allocation in results:
@@ -306,7 +303,7 @@ class EnumerateRecipientsTest(NotificationIntegrationTestCase):
             self.assertIsNotNone(allocation)
 
     def test_scope_project_with_project_filter(self):
-        results = list(enumerate_recipients({"projects": [self.proj1.pk]}, "project"))
+        results = list(RecipientResolver({"projects": [self.proj1.pk]}).enumerate("project"))
         # proj1 has user1 and user2
         self.assertEqual(len(results), 2)
         user_pks = {r[0].pk for r in results}
@@ -314,20 +311,16 @@ class EnumerateRecipientsTest(NotificationIntegrationTestCase):
 
 
 class EnumerateRecipientsDedupedTest(NotificationIntegrationTestCase):
-    """Tests for enumerate_recipients_deduped."""
+    """Tests for RecipientResolver.enumerate_deduped()."""
 
     def test_deduped_user_gets_only_first_tuple(self):
         # user1 appears on both projects; with dedup they get only 1 tuple
-        results = list(enumerate_recipients_deduped(
-            {}, "project", dedupe_users=["user1"]
-        ))
+        results = list(RecipientResolver({}).enumerate_deduped("project", ["user1"]))
         user1_tuples = [r for r in results if r[0].pk == self.user1.pk]
         self.assertEqual(len(user1_tuples), 1)
 
     def test_non_deduped_users_unchanged(self):
-        results = list(enumerate_recipients_deduped(
-            {}, "project", dedupe_users=["user1"]
-        ))
+        results = list(RecipientResolver({}).enumerate_deduped("project", ["user1"]))
         # user2 and user3 still have their single tuples
         user2_tuples = [r for r in results if r[0].pk == self.user2.pk]
         user3_tuples = [r for r in results if r[0].pk == self.user3.pk]
@@ -335,8 +328,8 @@ class EnumerateRecipientsDedupedTest(NotificationIntegrationTestCase):
         self.assertEqual(len(user3_tuples), 1)
 
     def test_empty_dedupe_list_is_passthrough(self):
-        full = list(enumerate_recipients({}, "project"))
-        deduped = list(enumerate_recipients_deduped({}, "project", []))
+        full = list(RecipientResolver({}).enumerate("project"))
+        deduped = list(RecipientResolver({}).enumerate_deduped("project", []))
         self.assertEqual(len(full), len(deduped))
 
 
@@ -467,20 +460,263 @@ class VariableViewsTest(NotificationIntegrationTestCase):
 
 
 class FilterOptionsViewTest(NotificationIntegrationTestCase):
-    """Tests for the filter-options AJAX endpoint."""
+    """Tests for the event-driven filter-options AJAX endpoint."""
 
-    def test_filter_options_with_project(self):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        # Extra fixtures for richer cascade testing.
+        cls.resource2 = Resource.objects.create(
+            name="GPU Cluster",
+            resource_type=cls.resource_type,
+            is_allocatable=True,
+        )
+        # An expired allocation on proj2 with resource2.
+        cls.alloc3 = Allocation.objects.create(
+            project=cls.proj2,
+            status=cls.alloc_status_expired,
+            justification="Old GPU allocation",
+        )
+        cls.alloc3.resources.add(cls.resource2)
+
+    def _post_event(self, event, selections=None):
+        """Helper: POST an event to filter-options and return parsed JSON."""
+        sel = {
+            "projects": [], "allocations": [], "departments": [],
+            "resources": [], "statuses": [], "roles": [],
+        }
+        if selections:
+            sel.update(selections)
         resp = self.client.post(
             reverse("notifications:filter-options"),
-            {"projects": [self.proj1.pk]},
+            json.dumps({"event": event, "selections": sel}),
+            content_type="application/json",
         )
         self.assertEqual(resp.status_code, 200)
-        data = resp.json()
-        self.assertIn("allocations", data)
-        # Should include alloc1 (proj1) but not alloc2 (proj2)
-        alloc_ids = [a["id"] for a in data["allocations"]]
+        return resp.json()
+
+    def _ids(self, data, key):
+        """Extract option ids from the response for a given filter key."""
+        return [o["id"] for o in data[key]["options"]]
+
+    def test_response_contains_all_six_filters(self):
+        data = self._post_event("ROLE_UPDATED")
+        for key in ("projects", "allocations", "departments",
+                    "resources", "statuses", "roles"):
+            self.assertIn(key, data)
+            self.assertIn("options", data[key])
+            self.assertIn("selected", data[key])
+
+    def test_project_updated_narrows_allocations(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj1.pk],
+        })
+        alloc_ids = self._ids(data, "allocations")
         self.assertIn(self.alloc1.pk, alloc_ids)
         self.assertNotIn(self.alloc2.pk, alloc_ids)
+        self.assertNotIn(self.alloc3.pk, alloc_ids)
+
+    def test_project_updated_narrows_departments(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj1.pk],
+        })
+        dept_ids = self._ids(data, "departments")
+        self.assertIn("Engineering Dept", dept_ids)
+
+    def test_project_updated_narrows_departments_excludes_unlinked(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj2.pk],
+        })
+        # proj2 has no department link
+        dept_ids = self._ids(data, "departments")
+        self.assertNotIn("Engineering Dept", dept_ids)
+
+    def test_project_updated_narrows_resources(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj2.pk],
+        })
+        res_ids = self._ids(data, "resources")
+        # proj2 has alloc2 (Test Storage) and alloc3 (GPU Cluster)
+        self.assertIn(self.resource.pk, res_ids)
+        self.assertIn(self.resource2.pk, res_ids)
+
+    def test_project_updated_narrows_statuses(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj2.pk],
+        })
+        status_ids = self._ids(data, "statuses")
+        # proj2 has Active (alloc2) and Expired (alloc3)
+        self.assertIn("Active", status_ids)
+        self.assertIn("Expired", status_ids)
+
+    def test_project_updated_narrows_roles(self):
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj1.pk],
+        })
+        role_ids = self._ids(data, "roles")
+        # proj1 has PI (user1) and User (user2), no Manager
+        self.assertIn("Principal Investigator", role_ids)
+        self.assertIn("User", role_ids)
+        self.assertNotIn("Manager", role_ids)
+
+    def test_department_updated_narrows_projects(self):
+        data = self._post_event("DEPARTMENT_UPDATED", {
+            "departments": ["Engineering Dept"],
+        })
+        proj_ids = self._ids(data, "projects")
+        self.assertIn(self.proj1.pk, proj_ids)
+        self.assertNotIn(self.proj2.pk, proj_ids)
+
+    def test_department_updated_narrows_allocations(self):
+        data = self._post_event("DEPARTMENT_UPDATED", {
+            "departments": ["Engineering Dept"],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        self.assertIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+
+    def test_allocation_updated_narrows_resources(self):
+        data = self._post_event("ALLOCATION_UPDATED", {
+            "allocations": [self.alloc3.pk],
+        })
+        res_ids = self._ids(data, "resources")
+        self.assertIn(self.resource2.pk, res_ids)
+        self.assertNotIn(self.resource.pk, res_ids)
+
+    def test_allocation_updated_does_not_narrow_statuses(self):
+        """Status is an independent peer — not narrowed by allocation selection."""
+        data = self._post_event("ALLOCATION_UPDATED", {
+            "allocations": [self.alloc3.pk],
+        })
+        status_ids = self._ids(data, "statuses")
+        # All statuses in the project scope remain available.
+        self.assertIn("Expired", status_ids)
+        self.assertIn("Active", status_ids)
+
+    def test_allocation_updated_preserves_status_scoping(self):
+        """Allocation options should still reflect status selections."""
+        data = self._post_event("ALLOCATION_UPDATED", {
+            "allocations": [self.alloc3.pk],
+            "statuses": ["Expired"],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        # Only expired allocations in the allocation options.
+        self.assertIn(self.alloc3.pk, alloc_ids)
+        self.assertNotIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+
+    def test_allocation_updated_does_not_narrow_projects(self):
+        """Upstream filters must not be narrowed."""
+        data = self._post_event("ALLOCATION_UPDATED", {
+            "allocations": [self.alloc1.pk],
+        })
+        proj_ids = self._ids(data, "projects")
+        # Both projects should still appear.
+        self.assertIn(self.proj1.pk, proj_ids)
+        self.assertIn(self.proj2.pk, proj_ids)
+
+    def test_resource_updated_narrows_allocations(self):
+        data = self._post_event("RESOURCE_UPDATED", {
+            "resources": [self.resource2.pk],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        # Only alloc3 uses resource2
+        self.assertIn(self.alloc3.pk, alloc_ids)
+        self.assertNotIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+
+    def test_resource_updated_narrows_statuses(self):
+        data = self._post_event("RESOURCE_UPDATED", {
+            "resources": [self.resource2.pk],
+        })
+        status_ids = self._ids(data, "statuses")
+        self.assertIn("Expired", status_ids)
+        self.assertNotIn("Active", status_ids)
+
+    def test_resource_updated_does_not_narrow_projects(self):
+        data = self._post_event("RESOURCE_UPDATED", {
+            "resources": [self.resource2.pk],
+        })
+        proj_ids = self._ids(data, "projects")
+        self.assertIn(self.proj1.pk, proj_ids)
+        self.assertIn(self.proj2.pk, proj_ids)
+
+    def test_status_updated_narrows_allocations(self):
+        data = self._post_event("ALLOCATION_STATUS_UPDATED", {
+            "statuses": ["Expired"],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        self.assertIn(self.alloc3.pk, alloc_ids)
+        self.assertNotIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+
+    def test_status_updated_narrows_resources(self):
+        data = self._post_event("ALLOCATION_STATUS_UPDATED", {
+            "statuses": ["Expired"],
+        })
+        res_ids = self._ids(data, "resources")
+        self.assertIn(self.resource2.pk, res_ids)
+        self.assertNotIn(self.resource.pk, res_ids)
+
+    def test_status_updated_does_not_narrow_projects(self):
+        data = self._post_event("ALLOCATION_STATUS_UPDATED", {
+            "statuses": ["Expired"],
+        })
+        proj_ids = self._ids(data, "projects")
+        self.assertIn(self.proj1.pk, proj_ids)
+        self.assertIn(self.proj2.pk, proj_ids)
+
+    def test_role_updated_is_leaf(self):
+        """Role is a leaf filter — nothing should be narrowed."""
+        data_all = self._post_event("ROLE_UPDATED")
+        data_pi  = self._post_event("ROLE_UPDATED", {
+            "roles": ["Principal Investigator"],
+        })
+        # All other filters should have the same options regardless of role.
+        for key in ("projects", "allocations", "departments", "resources", "statuses"):
+            self.assertEqual(
+                self._ids(data_all, key), self._ids(data_pi, key),
+                f"{key} options should not change on ROLE_UPDATED",
+            )
+
+    def test_stale_selection_pruned_from_selected(self):
+        """Selections that are no longer valid should be dropped."""
+        data = self._post_event("PROJECT_UPDATED", {
+            "projects": [self.proj1.pk],
+            # alloc2 belongs to proj2, not proj1 — should be pruned.
+            "allocations": [self.alloc1.pk, self.alloc2.pk],
+        })
+        self.assertIn(self.alloc1.pk, data["allocations"]["selected"])
+        self.assertNotIn(self.alloc2.pk, data["allocations"]["selected"])
+
+    def test_status_respects_upstream_project_scope(self):
+        """When both project and status are set, allocations should be
+        scoped to the project first, then filtered by status."""
+        data = self._post_event("ALLOCATION_STATUS_UPDATED", {
+            "projects": [self.proj1.pk],
+            "statuses": ["Active"],
+        })
+        alloc_ids = self._ids(data, "allocations")
+        # Only alloc1 is Active in proj1.
+        self.assertIn(self.alloc1.pk, alloc_ids)
+        self.assertNotIn(self.alloc2.pk, alloc_ids)
+        self.assertNotIn(self.alloc3.pk, alloc_ids)
+
+    def test_unknown_event_returns_400(self):
+        resp = self.client.post(
+            reverse("notifications:filter-options"),
+            json.dumps({"event": "BOGUS_EVENT", "selections": {}}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_json_returns_400(self):
+        resp = self.client.post(
+            reverse("notifications:filter-options"),
+            "not json",
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
 
 
 class ValidateViewTest(NotificationIntegrationTestCase):
@@ -488,7 +724,7 @@ class ValidateViewTest(NotificationIntegrationTestCase):
 
     def test_validate_returns_counts(self):
         resp = self.client.post(
-            reverse("notifications:validate"),
+            reverse("notifications:api-validate"),
             {
                 "subject": "Hi {{maint_date}}",
                 "body": "Body",
@@ -504,7 +740,9 @@ class ValidateViewTest(NotificationIntegrationTestCase):
         self.assertIn("user_count", data)
         self.assertIn("email_count", data)
         self.assertIn("scope", data)
-        self.assertEqual(data["scope"], "user")
+        # Scope is elevated to at least "project" so counts match the
+        # preview modal (which always shows project-level tuples).
+        self.assertEqual(data["scope"], "project")
 
 
 class RecipientCountViewTest(NotificationIntegrationTestCase):
@@ -512,7 +750,7 @@ class RecipientCountViewTest(NotificationIntegrationTestCase):
 
     def test_preview_returns_paginated_recipients(self):
         resp = self.client.post(
-            reverse("notifications:recipient-count"),
+            reverse("notifications:api-recipient-count"),
             {
                 "preview": "true",
                 "subject": "Hi {{project_title}}",
@@ -539,30 +777,32 @@ class RecipientCountViewTest(NotificationIntegrationTestCase):
 class ComposeViewTest(NotificationIntegrationTestCase):
     """Tests for the compose view POST (send action)."""
 
-    @patch("coldfront_notifications.views._dispatch_send")
-    def test_compose_send_creates_campaign(self, mock_dispatch):
-        resp = self.client.post(reverse("notifications:compose"), {
-            "action": "send",
-            "subject": "Hello {{maint_date}}",
-            "body": "Maintenance on {{maint_date}}.",
-            "sender": "rchelp@example.com",
-            "reply_to": "",
-            "template_id": "",
-            "filter_projects": json.dumps([]),
-            "filter_allocations": json.dumps([]),
-            "filter_resources": json.dumps([]),
-            "filter_departments": json.dumps([]),
-            "filter_statuses": json.dumps([]),
-            "filter_roles": json.dumps([]),
-            "extra_recipients": "",
-            "dedupe_users": "[]",
-        })
-        # Should redirect to campaign detail
-        self.assertEqual(resp.status_code, 302)
-        campaign = NotificationCampaign.objects.latest("created_at")
-        self.assertEqual(campaign.subject, "Hello {{maint_date}}")
-        self.assertEqual(campaign.status, NotificationCampaign.STATUS_QUEUED)
-        mock_dispatch.assert_called_once_with(campaign.pk)
+    def test_compose_send_creates_campaign(self):
+        # patch.object on the module directly to avoid __init__.py name shadowing
+        compose_mod = sys.modules["coldfront_notifications.views.compose"]
+        with patch.object(compose_mod, "_dispatch_send") as mock_dispatch:
+            resp = self.client.post(reverse("notifications:compose"), {
+                "action": "send",
+                "subject": "Hello {{maint_date}}",
+                "body": "Maintenance on {{maint_date}}.",
+                "sender": "rchelp@example.com",
+                "reply_to": "",
+                "template_id": "",
+                "filter_projects": json.dumps([]),
+                "filter_allocations": json.dumps([]),
+                "filter_resources": json.dumps([]),
+                "filter_departments": json.dumps([]),
+                "filter_statuses": json.dumps([]),
+                "filter_roles": json.dumps([]),
+                "extra_recipients": "",
+                "dedupe_users": "[]",
+            })
+            # Should redirect to campaign detail
+            self.assertEqual(resp.status_code, 302)
+            campaign = NotificationCampaign.objects.latest("created_at")
+            self.assertEqual(campaign.subject, "Hello {{maint_date}}")
+            self.assertEqual(campaign.status, NotificationCampaign.Status.QUEUED)
+            mock_dispatch.assert_called_once_with(campaign.pk)
 
 
 class StaffRequiredTest(NotificationIntegrationTestCase):
@@ -653,7 +893,7 @@ class CampaignProgressViewTest(NotificationIntegrationTestCase):
             subject="Test Progress",
             body="Body",
             sender="rchelp@example.com",
-            status=NotificationCampaign.STATUS_SENDING,
+            status=NotificationCampaign.Status.SENDING,
             recipient_count=10,
             delivered_count=5,
             failed_count=1,
@@ -794,13 +1034,13 @@ class SendNotificationCampaignTaskTest(NotificationIntegrationTestCase):
     """Tests for the send_notification_campaign task."""
 
     def test_send_campaign_delivers_emails(self):
-        from coldfront_notifications.tasks import send_notification_campaign
+        from coldfront_notifications.campaign_sender import send_notification_campaign
 
         campaign = NotificationCampaign.objects.create(
             subject="Hello {{maint_date}}",
             body="Maintenance on {{maint_date}}.",
             sender="rchelp@example.com",
-            status=NotificationCampaign.STATUS_QUEUED,
+            status=NotificationCampaign.Status.QUEUED,
             filters_snapshot={
                 "projects": [self.proj1.pk],
                 "allocations": [], "resources": [],
@@ -811,20 +1051,20 @@ class SendNotificationCampaignTaskTest(NotificationIntegrationTestCase):
         send_notification_campaign(campaign.pk)
 
         campaign.refresh_from_db()
-        self.assertEqual(campaign.status, NotificationCampaign.STATUS_SENT)
+        self.assertEqual(campaign.status, NotificationCampaign.Status.SENT)
         self.assertGreater(campaign.delivered_count, 0)
         self.assertEqual(campaign.failed_count, 0)
         # Should have logs
         self.assertEqual(campaign.logs.count(), campaign.delivered_count)
 
     def test_send_campaign_fails_on_unknown_token(self):
-        from coldfront_notifications.tasks import send_notification_campaign
+        from coldfront_notifications.campaign_sender import send_notification_campaign
 
         campaign = NotificationCampaign.objects.create(
             subject="Hello {{nonexistent_token}}",
             body="Body",
             sender="rchelp@example.com",
-            status=NotificationCampaign.STATUS_QUEUED,
+            status=NotificationCampaign.Status.QUEUED,
             filters_snapshot={
                 "projects": [], "allocations": [], "resources": [],
                 "departments": [], "statuses": [], "roles": [],
@@ -834,17 +1074,17 @@ class SendNotificationCampaignTaskTest(NotificationIntegrationTestCase):
         send_notification_campaign(campaign.pk)
 
         campaign.refresh_from_db()
-        self.assertEqual(campaign.status, NotificationCampaign.STATUS_FAILED)
+        self.assertEqual(campaign.status, NotificationCampaign.Status.FAILED)
 
     def test_send_campaign_fails_on_empty_recipients(self):
-        from coldfront_notifications.tasks import send_notification_campaign
+        from coldfront_notifications.campaign_sender import send_notification_campaign
 
         # Use an allocation status filter that matches nothing
         campaign = NotificationCampaign.objects.create(
             subject="Hello {{maint_date}}",
             body="Body with {{maint_date}}.",
             sender="rchelp@example.com",
-            status=NotificationCampaign.STATUS_QUEUED,
+            status=NotificationCampaign.Status.QUEUED,
             filters_snapshot={
                 "projects": [], "allocations": [], "resources": [],
                 "departments": [], "statuses": ["Expired"], "roles": [],
@@ -854,4 +1094,4 @@ class SendNotificationCampaignTaskTest(NotificationIntegrationTestCase):
         send_notification_campaign(campaign.pk)
 
         campaign.refresh_from_db()
-        self.assertEqual(campaign.status, NotificationCampaign.STATUS_FAILED)
+        self.assertEqual(campaign.status, NotificationCampaign.Status.FAILED)

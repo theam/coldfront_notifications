@@ -1,5 +1,6 @@
 .flbl { font-weight: 600; font-size: .82rem; margin-bottom: 4px; display: block; color: #343a40; }
 
+
 /* recipients: row 1 — filters */
 .recip-filters {
   display: grid;
@@ -8,15 +9,46 @@
   align-items: end;
 }
 
-/* recipients: row 2 — count pill + buttons */
+/* recipients: row 2 — actions + count pill */
 .recip-actions {
-  display: flex; align-items: center; gap: 10px;
-  margin-top: 14px; padding-top: 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 20px; padding-top: 14px;
   border-top: 1px solid #eef0f3;
 }
+.recip-actions-left {
+  display: flex; gap: 6px; flex-shrink: 0;
+}
 .recip-count-pill {
+  flex-shrink: 0;
   background: #fdf5f6; border: 1px solid #e8b4bb;
   border-radius: 5px; padding: 5px 14px; text-align: center;
+}
+
+/* recipients: row 3 — filter breakdown details */
+.recip-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.recip-details:empty { display: none; }
+.recip-detail-card {
+  background: #f8f9fb; border: 1px solid #e2e6ea;
+  border-radius: 4px; padding: 8px 10px; font-size: .75rem; color: #495057;
+}
+.recip-detail-card.narrowed {
+  border-left: 3px solid #A51C30;
+}
+.recip-detail-title {
+  font-weight: 700; font-size: .78rem; color: #343a40;
+  margin-bottom: 3px;
+}
+.recip-detail-title .count { color: #A51C30; }
+.recip-detail-breakdown {
+  font-size: .72rem; color: #495057; line-height: 1.5;
+}
+.recip-detail-filtered-by {
+  font-size: .68rem; color: #888; margin-top: 3px; font-style: italic;
 }
 .recip-count-num { font-size: 1.3rem; font-weight: 700; font-family: monospace; color: #A51C30; line-height: 1; }
 .recip-count-lbl { font-size: .68rem; color: #6c757d; margin-top: 2px; }
@@ -162,3 +194,36 @@
 }
 .select2-container--default .select2-selection__choice__remove { color: rgba(255,255,255,.7) !important; }
 .select2-container--default .select2-selection__choice__remove:hover { color: #fff !important; }
+
+/* filter summary bar (shown after Validate) */
+.filter-summary-bar {
+  background: #f4f6f9; border: 1px solid #dee2e8; border-radius: 5px;
+  padding: 8px 14px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.filter-summary-bar .fs-label {
+  font-weight: 600; color: #6c757d; font-size: .75rem; margin-right: 4px;
+}
+.filter-summary-bar .fs-chip {
+  display: inline-block; background: #fff; border: 1px solid #ced4da;
+  border-radius: 3px; padding: 2px 8px; font-size: .75rem; color: #495057;
+}
+.filter-summary-bar .fs-chip strong { color: #A51C30; font-weight: 600; }
+.filter-summary-bar .fs-none {
+  color: #adb5bd; font-style: italic; font-size: .75rem;
+}
+
+/* filter info icon */
+.filter-info {
+  font-size: .68rem; cursor: help; margin-left: 3px; opacity: .5;
+  transition: opacity .15s;
+}
+.filter-info:hover { opacity: 1; }
+
+/* jQuery UI tooltip override for filter summaries */
+.filter-summary-tip {
+  background: #333 !important; color: #fff !important;
+  border: none !important; border-radius: 5px !important;
+  padding: 8px 12px !important; font-size: .78rem !important;
+  max-width: 340px !important; line-height: 1.5 !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25) !important;
+}
