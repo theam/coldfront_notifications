@@ -13,8 +13,9 @@ import smtplib
 import time
 
 from django.conf import settings
-from django.core.mail import EmailMessage, get_connection
+from django.core.mail import EmailMessage, EmailMultiAlternatives, get_connection
 from django.utils import timezone
+from django.utils.html import strip_tags
 
 from .conf import BATCH_SIZE, BATCH_DELAY, MAX_RETRIES, RETRY_DELAY
 from .filters import RecipientResolver
@@ -239,14 +240,15 @@ class CampaignSender:
                         if bcc:
                             bcc = list(dev_list)
 
-                message = EmailMessage(
+                message = EmailMultiAlternatives(
                     subject=rendered_subject,
-                    body=rendered_body,
+                    body=strip_tags(rendered_body),
                     from_email=campaign.sender,
                     to=to,
                     bcc=bcc,
                     reply_to=[campaign.reply_to] if campaign.reply_to else [],
                 )
+                message.attach_alternative(rendered_body, "text/html")
 
                 send_error = self.delivery.send_with_retry(message, connection)
                 if send_error is None:

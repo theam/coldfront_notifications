@@ -1,0 +1,35 @@
+<!-- MODAL: Email Preview -->
+<div class="modal fade" id="previewModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-eye mr-2"></i>Email Preview</h5>
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex justify-content-between align-items-center mb-2" style="font-size:.82rem;">
+          <div>
+            <strong>Rendering for:</strong>
+            <select id="prev-recipient-picker" class="form-control form-control-sm d-inline-block ml-2"
+                    style="width:auto;min-width:280px;"></select>
+          </div>
+          <small class="text-muted" id="prev-scope-badge"></small>
+        </div>
+
+        <table class="table table-sm table-borderless mb-2" style="font-size:.82rem;">
+          <tr><td style="width:75px;font-weight:600;color:#6c757d;">From</td>     <td id="prev-from"></td></tr>
+          <tr><td style="font-weight:600;color:#6c757d;">Reply-To</td>            <td id="prev-replyto"></td></tr>
+          <tr><td style="font-weight:600;color:#6c757d;">To</td>                   <td id="prev-to"></td></tr>
+          <tr><td style="font-weight:600;color:#6c757d;">Subject</td>              <td id="prev-subject"></td></tr>
+        </table>
+        <div id="prev-error" class="alert alert-warning py-2" style="font-size:.78rem;display:none;"></div>
+        <hr class="my-2">
+        <div style="background:#fffef8;border:1px solid #e2d9b8;border-radius:4px;padding:14px;font-size:.84rem;max-height:320px;overflow-y:auto;" id="prev-body"></div>
+      </div>
+      <div class="modal-footer">
+        <small class="text-muted mr-auto" id="prev-footer">&mdash;</small>
+        <button type="button" class="btn btn-secondary btn-sm" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>

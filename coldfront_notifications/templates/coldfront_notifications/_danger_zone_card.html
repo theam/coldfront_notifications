@@ -1,0 +1,21 @@
+<div class="card border-danger">
+  <div class="card-header bg-danger text-white">
+    <h5 class="h6 mb-0">Danger Zone</h5>
+  </div>
+  <div class="card-body">
+    <p class="text-muted mb-2" style="font-size:.82rem;">{{ message }}</p>
+    {% if confirm_message %}
+    <form method="post" action="{{ delete_url }}"
+          onsubmit="return confirm('{{ confirm_message }}');">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-outline-danger btn-sm">
+        <i class="fas fa-trash mr-1"></i> {{ delete_label }}
+      </button>
+    </form>
+    {% else %}
+    <a href="{{ delete_url }}" class="btn btn-outline-danger btn-sm">
+      <i class="fas fa-trash mr-1"></i> {{ delete_label }}
+    </a>
+    {% endif %}
+  </div>
+</div>

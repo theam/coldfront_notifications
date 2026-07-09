@@ -8,6 +8,7 @@
 
 // ── Serialize filter hidden fields before submit ─────────────────
 $('#notifForm').on('submit', function() {
+  if (typeof tinymce !== 'undefined') tinymce.triggerSave();
   $('#h_projects').val(JSON.stringify($('#f_project').val() || []));
   $('#h_allocations').val(JSON.stringify($('#f_allocation').val() || []));
   $('#h_depts').val(JSON.stringify($('#f_dept').val() || []));
@@ -26,6 +27,21 @@ $(document).ready(function() {
     width: '100%',
     placeholder: function() { return $(this).data('placeholder'); }
   });
+
+  // Auto-select template if ?template=ID is in the URL
+  var params = new URLSearchParams(window.location.search);
+  var templateId = params.get('template');
+  if (templateId) {
+    // Delay slightly to ensure TinyMCE is initialized
+    setTimeout(function() {
+      var $item = $('.tmpl-item[data-id="' + templateId + '"]');
+      if ($item.length) {
+        $('.tmpl-item').removeClass('active');
+        $item.addClass('active');
+        loadTemplate($item);
+      }
+    }, 500);
+  }
 });
 
 // ── pageshow: reset validation state + refresh active template ────

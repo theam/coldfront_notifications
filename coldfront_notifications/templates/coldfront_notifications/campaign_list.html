@@ -26,46 +26,39 @@
       </div>
     </div>
   </div>
-  <div class="card-body p-0">
-    <table class="table table-hover table-sm mb-0" id="campaignsTable">
-      <thead class="thead-light">
-        <tr>
-          <th>#</th><th>Subject</th><th>Template</th>
-          <th class="text-right">Recipients</th><th class="text-right">Delivered</th>
-          <th class="text-right">Failed</th><th>Sent At</th><th>Status</th><th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for c in campaigns %}
-        <tr>
-          <td class="text-muted" style="font-family:monospace;">{{ c.pk|stringformat:"03d" }}</td>
-          <td><a href="{% url 'notifications:campaign-detail' c.pk %}">{{ c.display_subject }}</a></td>
-          <td><span class="badge badge-secondary" style="font-family:monospace;font-size:.7rem;">{{ c.template.slug|default:"—" }}</span></td>
-          <td class="text-right" style="font-family:monospace;">{{ c.recipient_count }}</td>
-          <td class="text-right text-success" style="font-family:monospace;">{{ c.delivered_count }}</td>
-          <td class="text-right {% if c.failed_count %}text-danger{% else %}text-muted{% endif %}" style="font-family:monospace;">{{ c.failed_count|default:"—" }}</td>
-          <td style="font-size:.8rem;">{{ c.sent_at|date:"Y-m-d H:i"|default:"—" }}</td>
-          <td data-order="{% if c.status == 'failed' %}0{% elif c.status == 'partial' %}1{% elif c.status == 'sending' %}2{% elif c.status == 'queued' %}3{% elif c.status == 'draft' %}4{% else %}5{% endif %}">
-            {% if c.status == 'sent' %}<span class="badge badge-success">Sent</span>
-            {% elif c.status == 'sending' %}<span class="badge badge-primary">Sending…</span>
-            {% elif c.status == 'partial' %}<span class="badge badge-warning text-dark">Partial</span>
-            {% elif c.status == 'failed' %}<span class="badge badge-danger">Failed</span>
-            {% elif c.status == 'draft' %}<span class="badge badge-secondary">Draft</span>
-            {% else %}<span class="badge badge-secondary">{{ c.status }}</span>{% endif %}
-          </td>
-          <td class="text-right" style="white-space:nowrap;">
-            {% if c.status == 'draft' %}
-            <a href="{% url 'notifications:compose' %}?draft={{ c.pk }}" class="btn btn-link btn-sm p-0 mr-2" title="Edit"><i class="fas fa-edit"></i></a>
-            <a href="{% url 'notifications:draft-delete' c.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete"><i class="fas fa-trash"></i></a>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="9" class="text-center text-muted py-4">No notifications yet. <a href="{% url 'notifications:compose' %}">Send one →</a></td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+</div>
+<div class="table-responsive mb-3">
+  <table class="table table-sm" id="campaignsTable">
+    <thead>
+      <tr>
+        <th>#</th><th>Subject</th><th>Template</th>
+        <th class="text-right">Recipients</th><th class="text-right">Delivered</th>
+        <th class="text-right">Failed</th><th>Sent At</th><th>Status</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in campaigns %}
+      <tr>
+        <td class="text-muted" style="font-family:monospace;">{{ c.pk|stringformat:"03d" }}</td>
+        <td><a href="{% url 'notifications:campaign-detail' c.pk %}">{{ c.display_subject }}</a></td>
+        <td><span class="badge badge-secondary" style="font-family:monospace;font-size:.7rem;">{{ c.template.slug|default:"—" }}</span></td>
+        <td class="text-right" style="font-family:monospace;">{{ c.recipient_count }}</td>
+        <td class="text-right text-success" style="font-family:monospace;">{{ c.delivered_count }}</td>
+        <td class="text-right {% if c.failed_count %}text-danger{% else %}text-muted{% endif %}" style="font-family:monospace;">{{ c.failed_count|default:"—" }}</td>
+        <td style="font-size:.8rem;">{{ c.sent_at|date:"Y-m-d H:i"|default:"—" }}</td>
+        {% include "coldfront_notifications/_status_badge_td.html" with campaign=c %}
+        <td class="text-right" style="white-space:nowrap;">
+          {% if c.status == 'draft' %}
+          <a href="{% url 'notifications:compose' %}?draft={{ c.pk }}" class="btn btn-link btn-sm p-0 mr-2" title="Edit"><i class="fas fa-edit"></i></a>
+          <a href="{% url 'notifications:draft-delete' c.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete"><i class="fas fa-trash"></i></a>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="9" class="text-center text-muted py-4">No notifications yet. <a href="{% url 'notifications:compose' %}">Send one →</a></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}
 {% block javascript %}

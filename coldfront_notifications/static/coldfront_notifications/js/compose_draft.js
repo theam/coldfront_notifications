@@ -31,7 +31,7 @@ function _collectDraftData() {
     csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
     draft_pk: DRAFT_PK || '',
     subject: $('#id_subject').val() || '',
-    body: $('#id_body').val() || '',
+    body: getBodyContent() || '',
     sender: $('#id_sender').val() || '',
     reply_to: $('#id_reply_to').val() || '',
     template_id: $('#hidden_template_id').val() || '',
@@ -91,7 +91,7 @@ function restoreDraft(draftData) {
 
   // Restore form fields
   if (draftData.subject) $('#id_subject').val(draftData.subject);
-  if (draftData.body) $('#id_body').val(draftData.body);
+  if (draftData.body) setBodyContent(draftData.body);
   if (draftData.sender) $('#id_sender').val(draftData.sender);
   if (draftData.reply_to) $('#id_reply_to').val(draftData.reply_to);
   if (draftData.template_id) $('#hidden_template_id').val(draftData.template_id);

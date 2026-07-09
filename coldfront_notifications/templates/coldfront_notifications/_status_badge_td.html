@@ -1,0 +1,8 @@
+<td data-order="{% if campaign.status == 'failed' %}0{% elif campaign.status == 'partial' %}1{% elif campaign.status == 'sending' %}2{% elif campaign.status == 'queued' %}3{% elif campaign.status == 'draft' %}4{% else %}5{% endif %}">
+  {% if campaign.status == 'sent' %}<span class="badge badge-success">Sent</span>
+  {% elif campaign.status == 'sending' %}<span class="badge badge-primary">Sending&hellip;</span>
+  {% elif campaign.status == 'partial' %}<span class="badge badge-warning text-dark">Partial</span>
+  {% elif campaign.status == 'failed' %}<span class="badge badge-danger">Failed</span>
+  {% elif campaign.status == 'draft' %}<span class="badge badge-secondary">Draft</span>
+  {% else %}<span class="badge badge-secondary">{{ campaign.status }}</span>{% endif %}
+</td>

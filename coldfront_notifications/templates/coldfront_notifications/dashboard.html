@@ -11,38 +11,10 @@
 
 <!-- Stat Cards -->
 <div class="row mb-4">
-  <div class="col-md-3">
-    <div class="card mb-3" style="border-top:3px solid #A51C30;">
-      <div class="card-body">
-        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6c757d;margin-bottom:6px;">Total Delivered</div>
-        <div style="font-size:2rem;font-weight:700;font-family:monospace;color:#212529;">{{ total_sent|default:"0" }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card mb-3" style="border-top:3px solid #28a745;">
-      <div class="card-body">
-        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6c757d;margin-bottom:6px;">Sending Now</div>
-        <div style="font-size:2rem;font-weight:700;font-family:monospace;color:#28a745;">{{ sending_now|default:"0" }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card mb-3" style="border-top:3px solid #ffc107;">
-      <div class="card-body">
-        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6c757d;margin-bottom:6px;">Failed (30d)</div>
-        <div style="font-size:2rem;font-weight:700;font-family:monospace;color:#e67e22;">{{ total_failed_30|default:"0" }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-3">
-    <div class="card mb-3" style="border-top:3px solid #17a2b8;">
-      <div class="card-body">
-        <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6c757d;margin-bottom:6px;">Total Notifications</div>
-        <div style="font-size:2rem;font-weight:700;font-family:monospace;color:#212529;">{{ total_campaigns|default:"0" }}</div>
-      </div>
-    </div>
-  </div>
+  {% include "coldfront_notifications/_stat_card.html" with label="Total Delivered" value=total_sent|default:"0" color="#A51C30" %}
+  {% include "coldfront_notifications/_stat_card.html" with label="Sending Now" value=sending_now|default:"0" color="#28a745" value_color="#28a745" %}
+  {% include "coldfront_notifications/_stat_card.html" with label="Failed (30d)" value=total_failed_30|default:"0" color="#ffc107" value_color="#e67e22" %}
+  {% include "coldfront_notifications/_stat_card.html" with label="Total Notifications" value=total_campaigns|default:"0" color="#17a2b8" %}
 </div>
 
 <!-- Recent Notifications -->
@@ -92,21 +64,7 @@
               <td style="font-size:.8rem;font-family:monospace;">{{ campaign.sender }}</td>
               <td class="text-right" style="font-family:monospace;">{{ campaign.recipient_count }}</td>
               <td style="font-size:.8rem;">{{ campaign.sent_at|date:"Y-m-d H:i"|default:"—" }}</td>
-              <td data-order="{% if campaign.status == 'failed' %}0{% elif campaign.status == 'partial' %}1{% elif campaign.status == 'sending' %}2{% elif campaign.status == 'queued' %}3{% elif campaign.status == 'draft' %}4{% else %}5{% endif %}">
-                {% if campaign.status == 'sent' %}
-                  <span class="badge badge-success">Sent</span>
-                {% elif campaign.status == 'sending' %}
-                  <span class="badge badge-primary">Sending…</span>
-                {% elif campaign.status == 'partial' %}
-                  <span class="badge badge-warning text-dark">Partial</span>
-                {% elif campaign.status == 'failed' %}
-                  <span class="badge badge-danger">Failed</span>
-                {% elif campaign.status == 'draft' %}
-                  <span class="badge badge-secondary">Draft</span>
-                {% else %}
-                  <span class="badge badge-secondary">{{ campaign.status }}</span>
-                {% endif %}
-              </td>
+              {% include "coldfront_notifications/_status_badge_td.html" with campaign=campaign %}
             </tr>
             {% empty %}
             <tr>

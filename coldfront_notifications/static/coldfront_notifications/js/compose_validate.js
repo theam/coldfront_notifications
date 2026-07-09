@@ -67,7 +67,7 @@ function runValidation() {
     data: {
       csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
       subject: $('#id_subject').val() || '',
-      body: $('#id_body').val() || '',
+      body: getBodyContent() || '',
       filters: JSON.stringify(collectFilters()),
       dedupe_users: JSON.stringify(getDedupeUsers()),
     },

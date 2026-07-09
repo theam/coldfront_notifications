@@ -175,7 +175,7 @@
   display: inline-flex; align-items: center; gap: 4px; margin: 0; white-space: nowrap;
 }
 .recip-page-size-select {
-  width: auto !important; display: inline-block; padding: 2px 6px;
+  width: 52px !important; display: inline-block; padding: 2px 4px;
   font-size: .78rem; height: auto !important;
 }
 
