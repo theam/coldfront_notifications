@@ -13,7 +13,7 @@ import smtplib
 import time
 
 from django.conf import settings
-from django.core.mail import EmailMultiAlternatives, get_connection
+from django.core.mail import EmailMessage, EmailMultiAlternatives, get_connection
 from django.utils import timezone
 from django.utils.html import strip_tags
 
