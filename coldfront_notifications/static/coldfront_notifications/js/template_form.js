@@ -49,12 +49,18 @@ function renderVarRef() {
 }
 
 $(document).on('click', '.var-btn', function() {
-  var ta    = document.getElementById('id_body');
   var token = $(this).attr('data-var');
-  var s = ta.selectionStart, e = ta.selectionEnd;
-  ta.value = ta.value.substring(0, s) + token + ta.value.substring(e);
-  ta.selectionStart = ta.selectionEnd = s + token.length;
-  ta.focus();
+  var editor = typeof tinymce !== 'undefined' && tinymce.get('id_body');
+  if (editor) {
+    editor.insertContent(token);
+    editor.focus();
+  } else {
+    var ta = document.getElementById('id_body');
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    ta.value = ta.value.substring(0, s) + token + ta.value.substring(e);
+    ta.selectionStart = ta.selectionEnd = s + token.length;
+    ta.focus();
+  }
 });
 
 $(document).on('input', '#varSearch', function() {

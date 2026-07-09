@@ -40,7 +40,7 @@ function renderVars(vars, filter) {
 // ── Extract tokens from subject + body ───────────────────────────
 var TOKEN_RE = /\{\{(\w+)\}\}/g;
 function extractTokens() {
-  var text = ($('#id_subject').val() || '') + '\n' + ($('#id_body').val() || '');
+  var text = ($('#id_subject').val() || '') + '\n' + (getBodyContent() || '');
   var seen = {};
   var out = [];
   var m;
@@ -66,7 +66,7 @@ function loadTemplate($el) {
   if (!id) { ACTIVE_VARS = []; renderVars([], ''); return; }
   $.getJSON(URLS.templateJson.replace('{id}', id), function(t) {
     $('#id_subject').val(t.subject || '');
-    $('#id_body').val(t.body || '');
+    setBodyContent(t.body || '');
     ACTIVE_VARS = t.variables || [];
     renderVars(ACTIVE_VARS, '');
     if (HAS_VALIDATED) runValidation();
@@ -99,10 +99,16 @@ $(document).on('input', '#varSearch', function() {
 
 // ── Variable insert at cursor ────────────────────────────────────
 $(document).on('click', '.var-btn', function() {
-  var ta    = document.getElementById('id_body');
   var token = $(this).attr('data-var');
-  var s = ta.selectionStart, e = ta.selectionEnd;
-  ta.value = ta.value.substring(0, s) + token + ta.value.substring(e);
-  ta.selectionStart = ta.selectionEnd = s + token.length;
-  ta.focus();
+  var editor = typeof tinymce !== 'undefined' && tinymce.get('id_body');
+  if (editor) {
+    editor.insertContent(token);
+    editor.focus();
+  } else {
+    var ta = document.getElementById('id_body');
+    var s = ta.selectionStart, e = ta.selectionEnd;
+    ta.value = ta.value.substring(0, s) + token + ta.value.substring(e);
+    ta.selectionStart = ta.selectionEnd = s + token.length;
+    ta.focus();
+  }
 });

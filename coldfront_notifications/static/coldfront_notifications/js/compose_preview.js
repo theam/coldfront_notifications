@@ -22,14 +22,14 @@ function renderPreviewSample(idx) {
     // "Template" — no recipient, raw tokens
     $('#prev-to').text('—');
     $('#prev-subject').text($('#id_subject').val() || '—');
-    $('#prev-body').text($('#id_body').val() || '—');
+    $('#prev-body').html(getBodyContent() || '—');
     $('#prev-error').hide();
     $('#prev-footer').text('Showing template with literal placeholders');
     return;
   }
   $('#prev-to').text((s.recipient.name || s.recipient.username) + ' <' + s.recipient.email + '>');
   $('#prev-subject').text(s.subject || '—');
-  $('#prev-body').text(s.body || '—');
+  $('#prev-body').html(s.body || '—');
   if (s.error) {
     $('#prev-error').text('Resolution error: ' + s.error).show();
   } else {
@@ -58,7 +58,7 @@ $(document).on('click', '#previewBtn', function() {
     data: {
       csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
       subject:      $('#id_subject').val() || '',
-      body:         $('#id_body').val()    || '',
+      body:         getBodyContent()       || '',
       filters:      JSON.stringify(collectFilters()),
       dedupe_users: JSON.stringify(getDedupeUsers()),
     },
@@ -212,7 +212,7 @@ function fetchPreviewPage(page) {
       alloc_status: $('#f_status').val()     || [],
       roles:        $('#f_role').val()       || [],
       subject:      $('#id_subject').val()   || '',
-      body:         $('#id_body').val()      || '',
+      body:         getBodyContent()         || '',
       dedupe_users: JSON.stringify(getDedupeUsers()),
       preview:      'true',
       page:         PREVIEW_PAGE,

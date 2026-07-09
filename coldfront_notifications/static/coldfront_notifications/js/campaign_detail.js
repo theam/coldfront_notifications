@@ -3,6 +3,11 @@
 //   CAMPAIGN_STATUS       - string ('queued', 'sending', 'sent', etc.)
 //   CAMPAIGN_PROGRESS_URL - URL for the progress JSON endpoint
 
+// Blur focused element before modal hides to avoid aria-hidden warning.
+$('#emailViewModal').on('hide.bs.modal', function() {
+  if (document.activeElement) document.activeElement.blur();
+});
+
 var STATUS_CLASSES = {
   sent:    'badge-success',
   sending: 'badge-primary',
@@ -49,7 +54,7 @@ $(function(){
   // Only init DataTable when there are real data rows.
   var realRows = $('#logTable tbody tr td:not([colspan])').length;
   if (realRows > 0) {
-    $('#logTable').DataTable({ order:[[2,'asc']], columnDefs:[{orderable:false,targets:[3]}] });
+    $('#logTable').DataTable({ order:[[2,'asc']], columnDefs:[{orderable:false,targets:[3]}], pagingType:'simple_numbers', pageLength:50, lengthMenu:[[50,100,250,-1],[50,100,250,'All']] });
   }
   // Start polling if campaign is in-flight.
   if (CAMPAIGN_STATUS === 'sending' || CAMPAIGN_STATUS === 'queued') {
@@ -62,6 +67,6 @@ $(document).on('click', '.view-email-btn', function() {
   $('#em-replyto').text($(this).attr('data-replyto') || '—');
   $('#em-to').text($(this).attr('data-email'));
   $('#em-subject').text($(this).attr('data-subject'));
-  $('#em-body').text($(this).attr('data-body'));
+  $('#em-body').html($(this).attr('data-body'));
   $('#emailViewModal').modal('show');
 });

@@ -13,32 +13,30 @@
     <hr>
   </div>
 </div>
-<div class="card mb-3">
-  <div class="card-body p-0">
-    <table class="table table-hover table-sm mb-0" id="templatesTable">
-      <thead class="thead-light">
-        <tr><th>Name</th><th>Slug</th><th>Subject</th><th>Updated</th><th class="text-right">Used</th><th></th></tr>
-      </thead>
-      <tbody>
-        {% for t in templates %}
-        <tr>
-          <td><strong>{{ t.name }}</strong></td>
-          <td><span class="badge badge-secondary" style="font-family:monospace;font-size:.7rem;">{{ t.slug }}</span></td>
-          <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ t.subject }}">{{ t.subject }}</td>
-          <td style="font-size:.8rem;">{{ t.updated_at|date:"Y-m-d" }}</td>
-          <td class="text-right" style="font-family:monospace;">{{ t.use_count }}×</td>
-          <td style="white-space:nowrap;">
-            <a href="{% url 'notifications:template-update' t.pk %}" class="btn btn-link btn-sm p-0 mr-2" title="Edit"><i class="fas fa-edit"></i></a>
-            <a href="{% url 'notifications:compose' %}?template={{ t.pk }}" class="btn btn-link btn-sm p-0 mr-2" title="Use template"><i class="fas fa-paper-plane"></i></a>
-            <a href="{% url 'notifications:template-delete' t.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete"><i class="fas fa-trash"></i></a>
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="6" class="text-center text-muted py-4">No templates yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<div class="table-responsive mb-3">
+  <table class="table table-sm" id="templatesTable">
+    <thead>
+      <tr><th>Name</th><th>Slug</th><th>Subject</th><th>Updated</th><th class="text-right">Used</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for t in templates %}
+      <tr>
+        <td>{{ t.name }}</td>
+        <td><span class="badge badge-secondary" style="font-family:monospace;font-size:.7rem;">{{ t.slug }}</span></td>
+        <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ t.subject }}">{{ t.subject }}</td>
+        <td style="font-size:.8rem;">{{ t.updated_at|date:"Y-m-d" }}</td>
+        <td class="text-right" style="font-family:monospace;">{{ t.use_count }}×</td>
+        <td style="white-space:nowrap;">
+          <a href="{% url 'notifications:template-update' t.pk %}" class="btn btn-link btn-sm p-0 mr-2" title="Edit"><i class="fas fa-edit"></i></a>
+          <a href="{% url 'notifications:compose' %}?template={{ t.pk }}" class="btn btn-link btn-sm p-0 mr-2" title="Use template"><i class="fas fa-paper-plane"></i></a>
+          <a href="{% url 'notifications:template-delete' t.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete"><i class="fas fa-trash"></i></a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6" class="text-center text-muted py-4">No templates yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}
 {% block javascript %}

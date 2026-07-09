@@ -59,46 +59,46 @@
 
     <div class="card mb-3">
       <div class="card-header"><h3 class="h5 mb-0">Per-Recipient Log</h3></div>
-      <div class="card-body p-0">
-        <table class="table table-sm mb-0" id="logTable">
-          <thead class="thead-light">
-            <tr><th>Recipient</th><th>Status</th><th>Timestamp</th><th class="text-center">Email</th></tr>
-          </thead>
-          <tbody>
-            {% for log in recipient_logs %}
-            <tr>
-              <td style="font-family:monospace;font-size:.8rem;">{{ log.email }}</td>
-              <td>
-                {% if log.status == 'delivered' %}<span class="badge badge-success">Delivered</span>
-                {% elif log.status == 'bounced' %}<span class="badge badge-warning text-dark">Bounced</span>
-                {% elif log.status == 'failed' %}<span class="badge badge-danger">Failed</span>
-                {% else %}<span class="badge badge-secondary">{{ log.status }}</span>{% endif %}
-              </td>
-              <td style="font-family:monospace;font-size:.78rem;">{{ log.timestamp|date:"Y-m-d H:i:s" }}</td>
-              <td class="text-center">
-                {% if log.rendered_body %}
-                <button type="button" class="btn btn-outline-primary btn-sm view-email-btn"
-                        data-email="{{ log.email }}"
-                        data-subject="{{ log.rendered_subject }}"
-                        data-body="{{ log.rendered_body }}"
-                        data-from="{{ campaign.sender }}"
-                        data-replyto="{{ campaign.reply_to }}"
-                        title="View sent email">
-                  <i class="fas fa-eye"></i>
-                </button>
-                {% elif log.notes %}
-                <span class="text-muted" style="font-size:.75rem;" title="{{ log.notes }}">
-                  <i class="fas fa-exclamation-triangle text-warning"></i>
-                </span>
-                {% else %}—{% endif %}
-              </td>
-            </tr>
-            {% empty %}
-            <tr><td colspan="4" class="text-center text-muted py-3">No log entries yet.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+    </div>
+    <div class="table-responsive mb-3">
+      <table class="table table-sm" id="logTable">
+        <thead>
+          <tr><th>Recipient</th><th>Status</th><th>Timestamp</th><th class="text-center">Email</th></tr>
+        </thead>
+        <tbody>
+          {% for log in recipient_logs %}
+          <tr>
+            <td style="font-family:monospace;font-size:.8rem;">{{ log.email }}</td>
+            <td>
+              {% if log.status == 'delivered' %}<span class="badge badge-success">Delivered</span>
+              {% elif log.status == 'bounced' %}<span class="badge badge-warning text-dark">Bounced</span>
+              {% elif log.status == 'failed' %}<span class="badge badge-danger">Failed</span>
+              {% else %}<span class="badge badge-secondary">{{ log.status }}</span>{% endif %}
+            </td>
+            <td style="font-family:monospace;font-size:.78rem;">{{ log.timestamp|date:"Y-m-d H:i:s" }}</td>
+            <td class="text-center">
+              {% if log.rendered_body %}
+              <button type="button" class="btn btn-outline-primary btn-sm view-email-btn"
+                      data-email="{{ log.email }}"
+                      data-subject="{{ log.rendered_subject }}"
+                      data-body="{{ log.rendered_body }}"
+                      data-from="{{ campaign.sender }}"
+                      data-replyto="{{ campaign.reply_to }}"
+                      title="View sent email">
+                <i class="fas fa-eye"></i>
+              </button>
+              {% elif log.notes %}
+              <span class="text-muted" style="font-size:.75rem;" title="{{ log.notes }}">
+                <i class="fas fa-exclamation-triangle text-warning"></i>
+              </span>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4" class="text-center text-muted py-3">No log entries yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
 
     <!-- Modal: View Sent Email -->
@@ -117,7 +117,7 @@
               <tr><td style="font-weight:600;color:#6c757d;">Subject</td>              <td id="em-subject"></td></tr>
             </table>
             <hr class="my-2">
-            <pre style="background:#fffef8;border:1px solid #e2d9b8;border-radius:4px;padding:14px;font-size:.84rem;white-space:pre-wrap;max-height:360px;overflow-y:auto;" id="em-body"></pre>
+            <div style="background:#fffef8;border:1px solid #e2d9b8;border-radius:4px;padding:14px;font-size:.84rem;max-height:360px;overflow-y:auto;" id="em-body"></div>
           </div>
           <div class="modal-footer">
             <small class="text-muted mr-auto">Exact content as delivered</small>
@@ -173,7 +173,7 @@
       <div class="card-body p-2">
         <p style="font-size:.75rem;" class="mb-1"><strong>Subject:</strong> {{ campaign.subject }}</p>
         <hr class="my-1">
-        <pre style="font-size:.78rem;background:#fffef8;border:1px solid #e2d9b8;border-radius:4px;padding:10px;white-space:pre-wrap;">{{ campaign.body }}</pre>
+        <div style="font-size:.78rem;background:#fffef8;border:1px solid #e2d9b8;border-radius:4px;padding:10px;max-height:300px;overflow-y:auto;">{{ campaign.body|safe }}</div>
       </div>
     </div>
 
@@ -185,5 +185,6 @@
 var CAMPAIGN_STATUS = '{{ campaign.status }}';
 var CAMPAIGN_PROGRESS_URL = '{% url "notifications:campaign-progress" campaign.pk %}';
 </script>
+<script src="{% static 'coldfront_notifications/js/datatables_init.js' %}"></script>
 <script src="{% static 'coldfront_notifications/js/campaign_detail.js' %}"></script>
 {% endblock %}

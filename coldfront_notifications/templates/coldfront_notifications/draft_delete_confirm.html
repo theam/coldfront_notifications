@@ -1,52 +1,32 @@
-{% extends "common/base.html" %}
-{% block title %}Delete Draft | FAS Research Computing{% endblock %}
-{% block content %}
-<div class="mb-3">
-  <h2>Delete Draft</h2>
-  <hr>
-</div>
+{% extends "coldfront_notifications/_delete_confirm_base.html" %}
 
-<div class="row">
-  <div class="col-lg-6">
-    <div class="card border-danger mb-3">
-      <div class="card-header bg-danger text-white">
-        <h5 class="h6 mb-0">Confirm Deletion</h5>
-      </div>
-      <div class="card-body">
-        <p>Are you sure you want to delete this draft notification?</p>
+{% block delete_title %}Delete Draft{% endblock %}
+{% block delete_heading %}Delete Draft{% endblock %}
 
-        <table class="table table-sm table-borderless mb-3" style="font-size:.85rem;">
-          <tr><td style="width:80px;" class="font-weight-bold text-muted">Subject</td><td>{{ campaign.subject|default:"(no subject)" }}</td></tr>
-          {% if campaign.template %}
-          <tr><td class="font-weight-bold text-muted">Template</td><td><code>{{ campaign.template.slug }}</code></td></tr>
-          {% endif %}
-          <tr><td class="font-weight-bold text-muted">Created</td><td>{{ campaign.created_at|date:"Y-m-d H:i" }}</td></tr>
-          {% if campaign.filter_summary %}
-          <tr><td class="font-weight-bold text-muted">Filters</td><td>
-            {% for badge in campaign.filter_summary %}
-            <span class="badge badge-light border text-dark mb-1" style="font-size:.72rem;">{{ badge }}</span>
-            {% endfor %}
-          </td></tr>
-          {% endif %}
-        </table>
-
-        <p class="text-muted" style="font-size:.82rem;">
-          This draft has never been sent. Deleting it is permanent and cannot be undone.
-        </p>
-
-        <form method="post">
-          {% csrf_token %}
-          <div class="d-flex justify-content-end" style="gap:8px;">
-            <a href="{% url 'notifications:campaign-list' %}" class="btn btn-outline-secondary btn-sm">
-              Go Back
-            </a>
-            <button type="submit" class="btn btn-danger btn-sm">
-              <i class="fas fa-trash mr-1"></i> Delete Draft
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
-</div>
+{% block confirm_message %}
+<p>Are you sure you want to delete this draft notification?</p>
 {% endblock %}
+
+{% block details_rows %}
+<tr><td style="width:80px;" class="font-weight-bold text-muted">Subject</td><td>{{ campaign.subject|default:"(no subject)" }}</td></tr>
+{% if campaign.template %}
+<tr><td class="font-weight-bold text-muted">Template</td><td><code>{{ campaign.template.slug }}</code></td></tr>
+{% endif %}
+<tr><td class="font-weight-bold text-muted">Created</td><td>{{ campaign.created_at|date:"Y-m-d H:i" }}</td></tr>
+{% if campaign.filter_summary %}
+<tr><td class="font-weight-bold text-muted">Filters</td><td>
+  {% for badge in campaign.filter_summary %}
+  <span class="badge badge-light border text-dark mb-1" style="font-size:.72rem;">{{ badge }}</span>
+  {% endfor %}
+</td></tr>
+{% endif %}
+{% endblock %}
+
+{% block explanation %}
+<p class="text-muted" style="font-size:.82rem;">
+  This draft has never been sent. Deleting it is permanent and cannot be undone.
+</p>
+{% endblock %}
+
+{% block cancel_url %}{% url 'notifications:campaign-list' %}{% endblock %}
+{% block delete_button_label %}Delete Draft{% endblock %}

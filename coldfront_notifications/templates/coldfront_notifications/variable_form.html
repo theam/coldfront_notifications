@@ -163,24 +163,8 @@
       </div>
 
       {% if variable %}
-      <div class="card border-danger">
-        <div class="card-header bg-danger text-white">
-          <h5 class="h6 mb-0">Danger Zone</h5>
-        </div>
-        <div class="card-body">
-          <p class="text-muted mb-2" style="font-size:.82rem;">
-            Deleting <code>{% templatetag openvariable %}{{ variable.key }}{% templatetag closevariable %}</code> will cause templates that use it
-            to fail pre-flight validation.
-          </p>
-          <form method="post" action="{% url 'notifications:variable-delete' variable.pk %}"
-                onsubmit="return confirm('Delete this variable? This cannot be undone.');">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-outline-danger btn-sm">
-              <i class="fas fa-trash mr-1"></i> Delete Variable
-            </button>
-          </form>
-        </div>
-      </div>
+      {% url 'notifications:variable-delete' variable.pk as dz_url %}
+      {% include "coldfront_notifications/_danger_zone_card.html" with message="Deleting this variable will cause templates that use it to fail pre-flight validation." delete_url=dz_url delete_label="Delete Variable" %}
       {% endif %}
     </div>
 

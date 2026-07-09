@@ -19,62 +19,60 @@
   </div>
 </div>
 
-<div class="card mb-3">
-  <div class="card-body p-0">
-    <table class="table table-hover table-sm mb-0" id="variablesTable">
-      <thead class="thead-light">
-        <tr>
-          <th>Token</th>
-          <th>Label</th>
-          <th>Source</th>
-          <th>Query / Widget</th>
-          <th>Example</th>
-          <th class="text-center">Required</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for v in variables %}
-        <tr>
-          <td><code style="font-family:monospace;">{% templatetag openvariable %}{{ v.key }}{% templatetag closevariable %}</code></td>
-          <td><strong>{{ v.label }}</strong>
-              {% if v.description %}<br><small class="text-muted" style="font-size:.72rem;">{{ v.description }}</small>{% endif %}
-          </td>
-          <td>
-            {% if v.source == "query" %}
-              <span class="badge badge-success" style="font-size:.68rem;">Query</span>
-            {% else %}
-              <span class="badge badge-warning" style="font-size:.68rem;">Manual</span>
-            {% endif %}
-          </td>
-          <td style="font-size:.78rem;">
-            {% if v.source == "query" %}
-              <code>{{ v.resolver_key }}</code>
-            {% else %}
-              {{ v.get_input_widget_display }}
-            {% endif %}
-          </td>
-          <td style="font-size:.8rem;color:#6c757d;">{{ v.example|default:"—" }}</td>
-          <td class="text-center">
-            {% if v.is_required %}<i class="fas fa-check text-success"></i>{% else %}—{% endif %}
-          </td>
-          <td class="text-right" style="white-space:nowrap;">
-            <a href="{% url 'notifications:variable-update' v.pk %}" class="btn btn-link btn-sm p-0 mr-2" title="Edit">
-              <i class="fas fa-edit"></i>
-            </a>
-            <a href="{% url 'notifications:variable-delete' v.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete">
-              <i class="fas fa-trash"></i>
-            </a>
-          </td>
-        </tr>
-        {% empty %}
-        <tr><td colspan="7" class="text-center text-muted py-4">No variables defined yet.
-          <a href="{% url 'notifications:variable-create' %}">Create the first one →</a>
-        </td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+<div class="table-responsive mb-3">
+  <table class="table table-sm" id="variablesTable">
+    <thead>
+      <tr>
+        <th>Token</th>
+        <th>Label</th>
+        <th>Source</th>
+        <th>Query / Widget</th>
+        <th>Example</th>
+        <th class="text-center">Required</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in variables %}
+      <tr>
+        <td><code style="font-family:monospace;">{% templatetag openvariable %}{{ v.key }}{% templatetag closevariable %}</code></td>
+        <td><strong>{{ v.label }}</strong>
+            {% if v.description %}<br><small class="text-muted" style="font-size:.72rem;">{{ v.description }}</small>{% endif %}
+        </td>
+        <td>
+          {% if v.source == "query" %}
+            <span class="badge badge-success" style="font-size:.68rem;">Query</span>
+          {% else %}
+            <span class="badge badge-warning" style="font-size:.68rem;">Manual</span>
+          {% endif %}
+        </td>
+        <td style="font-size:.78rem;">
+          {% if v.source == "query" %}
+            <code>{{ v.resolver_key }}</code>
+          {% else %}
+            {{ v.get_input_widget_display }}
+          {% endif %}
+        </td>
+        <td style="font-size:.8rem;color:#6c757d;">{{ v.example|default:"—" }}</td>
+        <td class="text-center">
+          {% if v.is_required %}<i class="fas fa-check text-success"></i>{% else %}—{% endif %}
+        </td>
+        <td class="text-right" style="white-space:nowrap;">
+          <a href="{% url 'notifications:variable-update' v.pk %}" class="btn btn-link btn-sm p-0 mr-2" title="Edit">
+            <i class="fas fa-edit"></i>
+          </a>
+          <a href="{% url 'notifications:variable-delete' v.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete">
+            <i class="fas fa-trash"></i>
+          </a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="7" class="text-center text-muted py-4">No variables defined yet.
+        <a href="{% url 'notifications:variable-create' %}">Create the first one →</a>
+      </td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
 {% endblock %}
 {% block javascript %}
