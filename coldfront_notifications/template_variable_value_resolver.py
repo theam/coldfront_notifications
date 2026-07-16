@@ -245,7 +245,10 @@ class AllocationResolverGroup(BaseResolverGroup):
         return format_value(context.allocation.path or None)
 
     def resolve_quota(self, context):
-        return format_value(context.allocation.get_attribute("Storage Quota (TB)"))
+        unit_label = context.primary_resource.quantity_label
+        if not unit_label:
+            raise MissingValue("resource has no quantity_label")
+        return format_value(context.allocation.get_attribute(f"Storage Quota ({unit_label})"))
 
     def resolve_usage(self, context):
         return format_value(context.allocation.usage)
