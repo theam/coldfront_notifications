@@ -8,6 +8,7 @@ from .compose import (  # noqa: F401
     ComposeView, RecipientCountView,
     PreviewRenderView, ValidateView,
     DraftSaveView,
+    UserSearchView, UserBulkResolveView,
 )
 from .helpers import dispatch_send  # noqa: F401
 from .templates import (  # noqa: F401

@@ -147,4 +147,14 @@ urlpatterns = [
         views.DraftSaveView.as_view(),
         name="api-draft-save",
     ),
+    path(
+        "api/user-search/",
+        views.UserSearchView.as_view(),
+        name="api-user-search",
+    ),
+    path(
+        "api/user-bulk-resolve/",
+        views.UserBulkResolveView.as_view(),
+        name="api-user-bulk-resolve",
+    ),
 ]

@@ -363,5 +363,168 @@ class TestNarrowingRules(unittest.TestCase):
         self.assertEqual(RoleFilter().narrowed_by(), [])
 
 
+class TestRecipientResolverDirectMode(unittest.TestCase):
+    """RecipientResolver in direct user selection mode."""
+
+    def test_is_direct_mode_true(self):
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": [1]})
+        self.assertTrue(resolver._is_direct_mode())
+
+    def test_is_direct_mode_false_when_filters(self):
+        resolver = RecipientResolver({"selection_mode": "filters"})
+        self.assertFalse(resolver._is_direct_mode())
+
+    def test_is_direct_mode_false_when_absent(self):
+        resolver = RecipientResolver({"projects": [1]})
+        self.assertFalse(resolver._is_direct_mode())
+
+    @patch("coldfront_notifications.filters.User")
+    def test_queryset_direct_mode(self, MockUser):
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": [10, 20]})
+        resolver.queryset()
+        MockUser.objects.filter.assert_called_once_with(pk__in=[10, 20])
+
+    @patch("coldfront_notifications.filters.User")
+    def test_queryset_direct_mode_empty(self, MockUser):
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": []})
+        resolver.queryset()
+        MockUser.objects.filter.assert_called_once_with(pk__in=[])
+
+    @patch("coldfront_notifications.filters.User")
+    def test_count_direct_mode(self, MockUser):
+        MockUser.objects.filter.return_value.count.return_value = 3
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": [1, 2, 3]})
+        self.assertEqual(resolver.count(), 3)
+
+    @patch("coldfront_notifications.filters.User")
+    def test_enumerate_user_scope_direct(self, MockUser):
+        user1 = MagicMock(pk=1, username="alice")
+        user2 = MagicMock(pk=2, username="bob")
+        MockUser.objects.filter.return_value.iterator.return_value = iter([user1, user2])
+
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": [1, 2]})
+        tuples = list(resolver.enumerate("user"))
+        self.assertEqual(len(tuples), 2)
+        self.assertEqual(tuples[0], (user1, None, None))
+        self.assertEqual(tuples[1], (user2, None, None))
+
+    @patch("coldfront_notifications.filters.AllocationUser")
+    @patch("coldfront_notifications.filters.ProjectUser")
+    def test_enumerate_project_scope_direct(self, MockPU, MockAU):
+        user1 = MagicMock(pk=1)
+        proj1 = MagicMock(pk=10)
+        proj2 = MagicMock(pk=20)
+        pu1 = MagicMock(user=user1, project=proj1)
+        pu2 = MagicMock(user=user1, project=proj2)
+
+        (MockPU.objects.select_related.return_value
+         .filter.return_value
+         .order_by.return_value
+         .iterator.return_value) = iter([pu1, pu2])
+
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": [1]})
+        tuples = list(resolver.enumerate("project"))
+        self.assertEqual(len(tuples), 2)
+        self.assertEqual(tuples[0], (user1, proj1, None))
+        self.assertEqual(tuples[1], (user1, proj2, None))
+
+    def test_enumerate_invalid_scope_raises(self):
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": [1]})
+        with self.assertRaises(ValueError):
+            list(resolver.enumerate("invalid"))
+
+    @patch("coldfront_notifications.filters.User")
+    def test_enumerate_direct_empty_pks(self, MockUser):
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": []})
+        tuples = list(resolver.enumerate("user"))
+        self.assertEqual(tuples, [])
+
+    @patch("coldfront_notifications.filters.User")
+    def test_enumerate_deduped_direct(self, MockUser):
+        user1 = MagicMock(pk=1, username="alice")
+        MockUser.objects.filter.return_value.iterator.return_value = iter([user1])
+
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": [1]})
+        tuples = list(resolver.enumerate_deduped("user", ["alice"]))
+        self.assertEqual(len(tuples), 1)
+        self.assertEqual(tuples[0], (user1, None, None))
+
+    @patch("coldfront_notifications.filters.AllocationUser")
+    @patch("coldfront_notifications.filters.ProjectUser")
+    def test_enumerate_allocation_scope_direct(self, MockPU, MockAU):
+        """Allocation scope expands to (user, project, allocation) tuples."""
+        user1 = MagicMock(pk=1)
+        proj1 = MagicMock(pk=10)
+        alloc1 = MagicMock(pk=100, project_id=10)
+        alloc2 = MagicMock(pk=101, project_id=10)
+
+        pu1 = MagicMock(user=user1, user_id=1, project=proj1, project_id=10)
+
+        (MockPU.objects.select_related.return_value
+         .filter.return_value
+         .order_by.return_value
+         .iterator.return_value) = iter([pu1])
+
+        au1 = MagicMock(user_id=1, allocation=alloc1)
+        au1.allocation.project_id = 10
+        au2 = MagicMock(user_id=1, allocation=alloc2)
+        au2.allocation.project_id = 10
+
+        (MockAU.objects.select_related.return_value
+         .filter.return_value
+         .order_by.return_value
+         .iterator.return_value) = iter([au1, au2])
+
+        resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": [1]})
+        tuples = list(resolver.enumerate("allocation"))
+        self.assertEqual(len(tuples), 2)
+        self.assertEqual(tuples[0], (user1, proj1, alloc1))
+        self.assertEqual(tuples[1], (user1, proj1, alloc2))
+
+    @patch("coldfront_notifications.filters.User")
+    def test_filter_mode_queryset_unchanged(self, MockUser):
+        """Filter mode (no selection_mode key) still works as before."""
+        resolver = RecipientResolver({"projects": [1]})
+        self.assertFalse(resolver._is_direct_mode())
+
+    def test_direct_mode_ignores_filter_keys(self):
+        """When in direct mode, filter keys are irrelevant."""
+        resolver = RecipientResolver({
+            "selection_mode": "direct",
+            "direct_user_pks": [1, 2],
+            "projects": [99],
+            "roles": ["PI"],
+        })
+        self.assertTrue(resolver._is_direct_mode())
+
+
+class TestFilterSummaryDirectMode(unittest.TestCase):
+    """NotificationCampaign.filter_summary handles direct mode."""
+
+    def test_direct_mode_summary(self):
+        from coldfront_notifications.models import NotificationCampaign
+        campaign = NotificationCampaign()
+        campaign.filters_snapshot = {
+            "selection_mode": "direct",
+            "direct_user_pks": [1, 2, 3],
+        }
+        self.assertEqual(campaign.filter_summary, ["Direct selection: 3 user(s)"])
+
+    def test_filter_mode_summary_unchanged(self):
+        from coldfront_notifications.models import NotificationCampaign
+        campaign = NotificationCampaign()
+        campaign.filters_snapshot = {
+            "projects": ["Alpha", "Beta"],
+            "departments": [],
+        }
+        self.assertEqual(campaign.filter_summary, ["Project: Alpha, Beta"])
+
+    def test_empty_filters_summary(self):
+        from coldfront_notifications.models import NotificationCampaign
+        campaign = NotificationCampaign()
+        campaign.filters_snapshot = {}
+        self.assertEqual(campaign.filter_summary, [])
+
+
 if __name__ == "__main__":
     unittest.main()

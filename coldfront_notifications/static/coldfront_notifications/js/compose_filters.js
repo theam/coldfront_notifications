@@ -18,6 +18,8 @@
 // Globals used:    FILTER_DATA (from Django template)
 // Globals exported: collectFilters, getDedupeUsers, setDedupeUsers
 
+var FILTER_KEYS = ['departments', 'projects', 'resources', 'statuses', 'allocations', 'roles'];
+
 var FilterStore = {
   state: {},
   listeners: {},
@@ -275,12 +277,18 @@ var FILTERS = {
 // Shared helpers
 
 function collectFilters() {
-  var filters = {};
-  var keys = ['departments', 'projects', 'resources', 'statuses', 'allocations', 'roles'];
-  for (var i = 0; i < keys.length; i++) {
-    var key = keys[i];
-    var state = FilterStore.state[key];
-    filters[key] = (state && state.selected.length) ? state.selected.map(String) : [];
+  var mode = typeof getSelectionMode === 'function' ? getSelectionMode() : 'filters';
+  var filters = { selection_mode: mode };
+
+  if (mode === 'direct') {
+    filters.direct_user_pks = typeof getDirectUserPks === 'function' ? getDirectUserPks() : [];
+    for (var i = 0; i < FILTER_KEYS.length; i++) filters[FILTER_KEYS[i]] = [];
+  } else {
+    for (var i = 0; i < FILTER_KEYS.length; i++) {
+      var key = FILTER_KEYS[i];
+      var state = FilterStore.state[key];
+      filters[key] = (state && state.selected.length) ? state.selected.map(String) : [];
+    }
   }
   return filters;
 }
@@ -303,6 +311,7 @@ function _invalidateValidation() {
   $('#sendBtn').prop('disabled', true);
   $('#previewRecipBtn').prop('disabled', true);
   $('#sendWarn').hide();
+  $('#directScopeWarn').hide();
   setDedupeUsers([]);
   if (typeof _setValidateButtonState === 'function') _setValidateButtonState('default');
   if (typeof _hideTopValidationResult === 'function') _hideTopValidationResult();
@@ -538,7 +547,7 @@ function _getBottomUpContext(name, state) {
 
 function _renderFilterDetails() {
   var $container = $('#filterDetails').empty();
-  var keys = ['departments', 'projects', 'resources', 'statuses', 'allocations', 'roles'];
+  var keys = FILTER_KEYS;
 
   for (var i = 0; i < keys.length; i++) {
     var k = keys[i];
@@ -577,7 +586,7 @@ function _renderFilterDetails() {
 function updateFilterSummaries() { _updateSummaries(); }
 
 function clearAllFilters() {
-  var keys = ['departments', 'projects', 'resources', 'statuses', 'allocations', 'roles'];
+  var keys = FILTER_KEYS;
   for (var i = 0; i < keys.length; i++) {
     var state = FilterStore.state[keys[i]];
     if (state) {
@@ -591,7 +600,7 @@ function clearAllFilters() {
 }
 
 function _updateClearButton() {
-  var keys = ['departments', 'projects', 'resources', 'statuses', 'allocations', 'roles'];
+  var keys = FILTER_KEYS;
   var hasAny = false;
   for (var i = 0; i < keys.length; i++) {
     var state = FilterStore.state[keys[i]];
@@ -608,7 +617,7 @@ $(document).on('click', '#clearFiltersBtn', clearAllFilters);
 $(document).ready(function() {
   if (typeof FILTER_DATA === 'undefined') return;
 
-  var keys = ['departments', 'projects', 'resources', 'statuses', 'allocations', 'roles'];
+  var keys = FILTER_KEYS;
   for (var i = 0; i < keys.length; i++) {
     var k = keys[i];
     if (FILTERS[k] && FILTER_DATA[k]) FILTERS[k].init(FILTER_DATA[k]);

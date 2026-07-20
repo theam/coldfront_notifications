@@ -109,24 +109,33 @@ function restoreDraft(draftData) {
 
   // Wait for Select2 and FilterStore to be initialized
   setTimeout(function() {
-    for (var filterName in filterMap) {
-      var values = filters[filterName] || [];
-      if (!values.length) continue;
-
-      var state = FilterStore.state[filterName];
-      if (!state) continue;
-
-      // Coerce types to match the option IDs
-      var firstOption = state.all.length ? state.all[0] : null;
-      var useInt = firstOption && typeof firstOption.id === 'number';
-      if (useInt) {
-        values = values.map(function(value) { return parseInt(value, 10); });
+    // Check if draft used direct mode
+    if (filters.selection_mode === 'direct' && typeof switchSelectionMode === 'function') {
+      switchSelectionMode('direct');
+      var directPks = filters.direct_user_pks || [];
+      if (directPks.length && typeof restoreDirectMode === 'function') {
+        restoreDirectMode(directPks);
       }
+    } else {
+      for (var filterName in filterMap) {
+        var values = filters[filterName] || [];
+        if (!values.length) continue;
 
-      state.selected = values;
-      if (FILTERS[filterName]) {
-        FILTERS[filterName].render();
-        FILTERS[filterName].dispatchChanged();
+        var state = FilterStore.state[filterName];
+        if (!state) continue;
+
+        // Coerce types to match the option IDs
+        var firstOption = state.all.length ? state.all[0] : null;
+        var useInt = firstOption && typeof firstOption.id === 'number';
+        if (useInt) {
+          values = values.map(function(value) { return parseInt(value, 10); });
+        }
+
+        state.selected = values;
+        if (FILTERS[filterName]) {
+          FILTERS[filterName].render();
+          FILTERS[filterName].dispatchChanged();
+        }
       }
     }
 

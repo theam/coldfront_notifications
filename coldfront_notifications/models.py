@@ -199,6 +199,10 @@ class NotificationCampaign(models.Model):
     @property
     def filter_summary(self):
         """Return list of human-readable filter badge strings."""
+        if self.filters_snapshot.get("selection_mode") == "direct":
+            pks = self.filters_snapshot.get("direct_user_pks", [])
+            return [f"Direct selection: {len(pks)} user(s)"]
+
         labels = {
             "projects":     "Project",
             "allocations":  "Allocation",

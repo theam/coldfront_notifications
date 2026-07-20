@@ -13,6 +13,7 @@ from collections import Counter
 from typing import Any
 
 from django.contrib import messages
+from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import redirect
@@ -35,7 +36,28 @@ from ..notification_validator import NotificationValidator, extract_tokens, dete
 from ..template_variable_value_resolver import MissingValue
 from .helpers import StaffRequiredMixin, dispatch_send
 
+User = get_user_model()
 logger = logging.getLogger(__name__)
+
+SCOPE_ORDER = ["user", "project", "allocation"]
+
+
+def resolve_scope(subject: str, body: str, filters: dict) -> str:
+    """Determine the enumeration scope for a notification.
+
+    In filter mode the scope is elevated to at least "project" so previews
+    always show project context.  In direct mode the scope is determined
+    purely by the template variables — elevating would exclude users
+    without project/allocation memberships.
+    """
+    tokens = extract_tokens(subject, body)
+    used_variables = list(NotificationVariable.objects.filter(key__in=tokens))
+    token_scope = determine_scope(used_variables)
+
+    if filters.get("selection_mode") == "direct":
+        return token_scope
+
+    return max(token_scope, "project", key=SCOPE_ORDER.index)
 
 
 class ComposeView(StaffRequiredMixin, TemplateView):
@@ -216,7 +238,9 @@ class ComposeView(StaffRequiredMixin, TemplateView):
 
     @staticmethod
     def _parse_filters_from_post(request) -> dict:
-        return {
+        selection_mode = request.POST.get("selection_mode", "filters")
+        result = {
+            "selection_mode": selection_mode,
             "projects": ComposeView._parse_filter_list(request.POST.get("filter_projects", "")),
             "allocations": ComposeView._parse_filter_list(request.POST.get("filter_allocations", "")),
             "resources": ComposeView._parse_filter_list(request.POST.get("filter_resources", "")),
@@ -224,6 +248,10 @@ class ComposeView(StaffRequiredMixin, TemplateView):
             "statuses": ComposeView._parse_filter_list(request.POST.get("filter_statuses", "")),
             "roles": ComposeView._parse_filter_list(request.POST.get("filter_roles", "")),
         }
+        if selection_mode == "direct":
+            raw_pks = request.POST.get("direct_user_pks", "[]")
+            result["direct_user_pks"] = ComposeView._parse_json(raw_pks, [])
+        return result
 
     @staticmethod
     def _parse_filter_list(raw: str) -> list:
@@ -249,14 +277,26 @@ class RecipientCountView(StaffRequiredMixin, View):
     """Return recipient count or paginated preview as JSON."""
 
     def post(self, request, *args: Any, **kwargs: Any) -> JsonResponse:
-        filters = {
-            "projects": request.POST.getlist("projects"),
-            "allocations": request.POST.getlist("allocations"),
-            "resources": request.POST.getlist("resources"),
-            "departments": request.POST.getlist("departments"),
-            "statuses": request.POST.getlist("alloc_status"),
-            "roles": request.POST.getlist("roles"),
-        }
+        selection_mode = request.POST.get("selection_mode", "filters")
+        if selection_mode == "direct":
+            raw_pks = request.POST.get("direct_user_pks", "[]")
+            try:
+                direct_pks = json.loads(raw_pks) if isinstance(raw_pks, str) else raw_pks
+            except (ValueError, TypeError):
+                direct_pks = []
+            filters = {
+                "selection_mode": "direct",
+                "direct_user_pks": direct_pks,
+            }
+        else:
+            filters = {
+                "projects": request.POST.getlist("projects"),
+                "allocations": request.POST.getlist("allocations"),
+                "resources": request.POST.getlist("resources"),
+                "departments": request.POST.getlist("departments"),
+                "statuses": request.POST.getlist("alloc_status"),
+                "roles": request.POST.getlist("roles"),
+            }
         is_preview = request.POST.get("preview") == "true"
         subject = request.POST.get("subject", "")
         body = request.POST.get("body", "")
@@ -304,11 +344,7 @@ class RecipientCountView(StaffRequiredMixin, View):
 
     @staticmethod
     def _determine_preview_scope(filters, subject, body) -> str:
-        tokens = extract_tokens(subject, body)
-        used_variables = list(NotificationVariable.objects.filter(key__in=tokens))
-        token_scope = determine_scope(used_variables)
-
-        return max(token_scope, "project", key=["user", "project", "allocation"].index)
+        return resolve_scope(subject, body, filters)
 
     @staticmethod
     def _collect_user_stats(resolver, scope) -> tuple[dict, Counter, int]:
@@ -492,30 +528,47 @@ class ValidateView(StaffRequiredMixin, View):
 
         PreviewRenderView._normalize_filter_keys(filters)
 
-        tokens = extract_tokens(subject, body)
-        used_variables = list(NotificationVariable.objects.filter(key__in=tokens))
-        token_scope = determine_scope(used_variables)
-
-        elevated_scope = max(
-            token_scope,
-            "project",
-            key=["user", "project", "allocation"].index,
+        logger.debug(
+            "ValidateView: selection_mode=%s, direct_user_pks=%s",
+            filters.get("selection_mode"),
+            len(filters.get("direct_user_pks", [])) if filters.get("selection_mode") == "direct" else "N/A",
         )
+
+        scope = resolve_scope(subject, body, filters)
 
         result = NotificationValidator(
             subject,
             body,
             filters,
             dedupe_users=dedupe_users,
-            scope_override=elevated_scope,
+            scope_override=scope,
         ).validate()
 
         result["active_filters"] = self._build_active_filters(filters)
+        result["selection_mode"] = filters.get("selection_mode", "filters")
+
+        # In direct mode, tell the frontend how many users were selected
+        # vs. how many matched the scope so it can show a warning.
+        if filters.get("selection_mode") == "direct":
+            selected_pks = filters.get("direct_user_pks") or []
+            result["direct_selected_count"] = len(selected_pks)
+
         return JsonResponse(result)
 
     @staticmethod
     def _build_active_filters(filters: dict) -> list[dict]:
         """Build human-readable active filter labels."""
+        if filters.get("selection_mode") == "direct":
+            pks = filters.get("direct_user_pks") or []
+            usernames = list(
+                User.objects.filter(pk__in=pks)
+                .order_by("username")
+                .values_list("username", flat=True)
+            )
+            if usernames:
+                return [{"label": "Direct Selection", "values": usernames}]
+            return [{"label": "Direct Selection", "values": [f"{len(pks)} user(s)"]}]
+
         active = []
 
         if filters.get("projects"):
@@ -561,6 +614,67 @@ class ValidateView(StaffRequiredMixin, View):
             })
 
         return active
+
+
+class UserSearchView(StaffRequiredMixin, View):
+    """API endpoint for user autocomplete search."""
+
+    def get(self, request, *args: Any, **kwargs: Any) -> JsonResponse:
+        q = request.GET.get("q", "").strip()
+        try:
+            limit = min(int(request.GET.get("limit", 100)), 200)
+        except (ValueError, TypeError):
+            limit = 100
+
+        users = User.objects.filter(is_active=True)
+        if q:
+            users = users.filter(
+                Q(username__icontains=q)
+                | Q(email__icontains=q)
+                | Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(full_name__icontains=q)
+            )
+        users = users.order_by("username")[:limit]
+        results = [
+            {
+                "pk": u.pk,
+                "username": u.username,
+                "email": u.email,
+                "full_name": u.get_full_name() or u.username,
+            }
+            for u in users
+        ]
+        return JsonResponse({"results": results})
+
+
+class UserBulkResolveView(StaffRequiredMixin, View):
+    """Resolve pasted usernames/emails to user objects."""
+
+    def post(self, request, *args: Any, **kwargs: Any) -> JsonResponse:
+        raw = request.POST.get("identifiers", "")
+        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+
+        found = []
+        seen_pks = set()
+        not_found = []
+        for identifier in lines:
+            user = User.objects.filter(
+                Q(username__iexact=identifier) | Q(email__iexact=identifier),
+                is_active=True,
+            ).first()
+            if user and user.pk not in seen_pks:
+                seen_pks.add(user.pk)
+                found.append({
+                    "pk": user.pk,
+                    "username": user.username,
+                    "email": user.email,
+                    "full_name": user.get_full_name() or user.username,
+                })
+            elif not user:
+                not_found.append(identifier)
+
+        return JsonResponse({"found": found, "not_found": not_found})
 
 
 class DraftSaveView(StaffRequiredMixin, View):

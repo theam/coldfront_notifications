@@ -288,10 +288,19 @@ class RecipientResolver:
 
     Accepts the filters dict from the compose POST and produces User
     querysets or (user, project, allocation) tuples for email rendering.
+
+    Supports two modes (via ``selection_mode`` key in filters):
+      - ``"filters"`` (default): narrow recipients through filter cascade
+      - ``"direct"``: hand-pick users by PK via ``direct_user_pks``
     """
 
     def __init__(self, filters: dict):
         self.filters = filters
+
+    def _is_direct_mode(self) -> bool:
+        return self.filters.get("selection_mode") == "direct"
+
+    # ── filter-mode helpers ─────────────────────────────────────────
 
     def _apply_project_filters(self, project_users):
         for name in PROJECT_FILTERS:
@@ -311,8 +320,14 @@ class RecipientResolver:
     def _has_allocation_filters(self):
         return any(self.filters.get(name) for name in ALLOCATION_FILTERS)
 
+    # ── public API ──────────────────────────────────────────────────
+
     def queryset(self):
         """Return a deduplicated User queryset matching the filters."""
+        if self._is_direct_mode():
+            pks = self.filters.get("direct_user_pks") or []
+            return User.objects.filter(pk__in=pks)
+
         project_users = self._apply_project_filters(
             ProjectUser.objects.select_related("user", "project")
             .filter(status__name="Active"),
@@ -345,6 +360,10 @@ class RecipientResolver:
         """
         if scope not in ("user", "project", "allocation"):
             raise ValueError(f"Unknown scope {scope!r}")
+
+        if self._is_direct_mode():
+            yield from self._enumerate_direct(scope)
+            return
 
         if scope == "user":
             for user in self.queryset().iterator():
@@ -383,6 +402,55 @@ class RecipientResolver:
                 "allocation", "allocation__status", "allocation__project",
             )
             .filter(allocation__in=matched_allocations, status__name="Active")
+            .order_by("user_id", "allocation_id", "pk")
+        )
+
+        allocations_by_user_project = defaultdict(list)
+        for allocation_user in allocation_users.iterator():
+            key = (allocation_user.user_id, allocation_user.allocation.project_id)
+            allocations_by_user_project[key].append(allocation_user.allocation)
+
+        for project_user in project_users.iterator():
+            key = (project_user.user_id, project_user.project_id)
+            for allocation in allocations_by_user_project.get(key, []):
+                yield (project_user.user, project_user.project, allocation)
+
+    # ── direct-mode enumeration ─────────────────────────────────────
+
+    def _enumerate_direct(self, scope: str):
+        """Yield tuples for directly-selected users, expanding to their
+        projects/allocations when the template scope demands it."""
+        pks = self.filters.get("direct_user_pks") or []
+        if not pks:
+            return
+
+        if scope == "user":
+            for user in User.objects.filter(pk__in=pks).iterator():
+                yield (user, None, None)
+            return
+
+        # Expand to active project memberships
+        project_users = (
+            ProjectUser.objects
+            .select_related(
+                "user", "project", "project__pi", "project__status", "role",
+            )
+            .filter(user__pk__in=pks, status__name="Active")
+            .order_by("user_id", "project_id", "pk")
+        )
+
+        if scope == "project":
+            for project_user in project_users.iterator():
+                yield (project_user.user, project_user.project, None)
+            return
+
+        # scope == "allocation" — expand to active allocations
+        allocation_users = (
+            AllocationUser.objects
+            .select_related(
+                "allocation", "allocation__status", "allocation__project",
+            )
+            .filter(user__pk__in=pks, status__name="Active")
             .order_by("user_id", "allocation_id", "pk")
         )
 

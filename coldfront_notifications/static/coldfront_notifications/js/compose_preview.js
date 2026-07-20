@@ -200,24 +200,35 @@ function fetchPreviewPage(page) {
   $('#recipSearch').val('');
   $('#recipRows').html('<tr><td colspan="6" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin mr-1"></i>Loading…</td></tr>');
 
+  var mode = typeof getSelectionMode === 'function' ? getSelectionMode() : 'filters';
+  var postData = {
+    csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
+    subject:      $('#id_subject').val()   || '',
+    body:         getBodyContent()         || '',
+    dedupe_users: JSON.stringify(getDedupeUsers()),
+    preview:      'true',
+    page:         PREVIEW_PAGE,
+    page_size:    getPageSize(),
+    selection_mode: mode
+  };
+
+  if (mode === 'direct') {
+    postData.direct_user_pks = JSON.stringify(
+      typeof getDirectUserPks === 'function' ? getDirectUserPks() : []
+    );
+  } else {
+    postData.projects     = $('#f_project').val()    || [];
+    postData.allocations  = $('#f_allocation').val() || [];
+    postData.departments  = $('#f_dept').val()       || [];
+    postData.resources    = $('#f_resource').val()   || [];
+    postData.alloc_status = $('#f_status').val()     || [];
+    postData.roles        = $('#f_role').val()       || [];
+  }
+
   $.ajax({
     url: URLS.recipientCount,
     type: 'POST',
-    data: {
-      csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
-      projects:     $('#f_project').val()    || [],
-      allocations:  $('#f_allocation').val() || [],
-      departments:  $('#f_dept').val()       || [],
-      resources:    $('#f_resource').val()   || [],
-      alloc_status: $('#f_status').val()     || [],
-      roles:        $('#f_role').val()       || [],
-      subject:      $('#id_subject').val()   || '',
-      body:         getBodyContent()         || '',
-      dedupe_users: JSON.stringify(getDedupeUsers()),
-      preview:      'true',
-      page:         PREVIEW_PAGE,
-      page_size:    getPageSize(),
-    },
+    data: postData,
     traditional: true,
     success: function(data) {
       PREVIEW_ROWS        = data.recipients || [];

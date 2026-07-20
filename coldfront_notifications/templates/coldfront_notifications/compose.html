@@ -27,36 +27,78 @@
   </div>
   <div class="collapse show" id="recipients-body">
     <div class="card-body">
-      <!-- Row 1: filters (ordered by tier: T1 → T2 → T3) -->
-      <div class="recip-filters">
-        <div>
-          <label class="flbl">Department</label>
-          <select class="s2" id="f_dept" multiple data-placeholder="Any department"></select>
+
+      <!-- Mode toggle -->
+      <div class="recip-mode-toggle mb-3">
+        <div class="btn-group btn-group-sm" role="group">
+          <button type="button" class="btn btn-outline-primary active" id="modeFilters">
+            <i class="fas fa-filter mr-1"></i>Filter Recipients
+          </button>
+          <button type="button" class="btn btn-outline-primary" id="modeDirect">
+            <i class="fas fa-user-plus mr-1"></i>Select Users
+          </button>
+        </div>
+      </div>
+
+      <!-- ── Filter mode panel ── -->
+      <div id="filterModePanel">
+        <div class="recip-filters">
+          <div>
+            <label class="flbl">Department</label>
+            <select class="s2" id="f_dept" multiple data-placeholder="Any department"></select>
+          </div>
+
+          <div>
+            <label class="flbl">Project</label>
+            <select class="s2" id="f_project" multiple data-placeholder="Any project"></select>
+          </div>
+
+          <div>
+            <label class="flbl">Resource</label>
+            <select class="s2" id="f_resource" multiple data-placeholder="Any resource"></select>
+          </div>
+
+          <div>
+            <label class="flbl">Allocation Status</label>
+            <select class="s2" id="f_status" multiple data-placeholder="Any status"></select>
+          </div>
+
+          <div>
+            <label class="flbl">Allocation</label>
+            <select class="s2" id="f_allocation" multiple data-placeholder="Any allocation"></select>
+          </div>
+
+          <div>
+            <label class="flbl">User Role</label>
+            <select class="s2" id="f_role" multiple data-placeholder="Any role"></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Direct user selection panel ── -->
+      <div id="directModePanel" style="display:none;">
+        <div class="direct-search-wrap">
+          <label class="flbl">Search Users</label>
+          <input type="text" class="form-control form-control-sm" id="directUserSearch"
+                 placeholder="Search by username, email, or name…" autocomplete="off">
+          <div class="direct-search-results" id="directSearchResults" style="display:none;"></div>
         </div>
 
-        <div>
-          <label class="flbl">Project</label>
-          <select class="s2" id="f_project" multiple data-placeholder="Any project"></select>
-        </div>
+        <div class="direct-user-chips mt-2" id="directUserChips"></div>
 
-        <div>
-          <label class="flbl">Resource</label>
-          <select class="s2" id="f_resource" multiple data-placeholder="Any resource"></select>
-        </div>
+        <div class="direct-user-count mt-1" id="directUserCount" style="font-size:.75rem;color:#6c757d;"></div>
 
-        <div>
-          <label class="flbl">Allocation Status</label>
-          <select class="s2" id="f_status" multiple data-placeholder="Any status"></select>
-        </div>
-
-        <div>
-          <label class="flbl">Allocation</label>
-          <select class="s2" id="f_allocation" multiple data-placeholder="Any allocation"></select>
-        </div>
-
-        <div>
-          <label class="flbl">User Role</label>
-          <select class="s2" id="f_role" multiple data-placeholder="Any role"></select>
+        <div class="mt-3">
+          <label class="flbl">Bulk Add <small class="text-muted font-weight-normal">(paste usernames or emails, one per line)</small></label>
+          <div class="d-flex" style="gap:8px;">
+            <textarea class="form-control form-control-sm" id="directBulkPaste" rows="3"
+                      style="font-family:monospace;font-size:.8rem;flex:1;"
+                      placeholder="jsmith&#10;jdoe@example.edu&#10;…"></textarea>
+            <button type="button" class="btn btn-sm btn-outline-secondary align-self-start" id="directBulkResolveBtn">
+              <i class="fas fa-search mr-1"></i>Resolve
+            </button>
+          </div>
+          <div id="directBulkFeedback" class="mt-1" style="font-size:.78rem;"></div>
         </div>
       </div>
 
@@ -149,6 +191,8 @@
       <input type="hidden" name="filter_statuses" id="h_statuses">
       <input type="hidden" name="filter_roles" id="h_roles">
       <input type="hidden" name="dedupe_users" id="h_dedupe_users" value="[]">
+      <input type="hidden" name="selection_mode" id="h_selection_mode" value="filters">
+      <input type="hidden" name="direct_user_pks" id="h_direct_user_pks" value="[]">
 
       <div class="card" style="margin-bottom:0;">
         <div class="card-header">
@@ -249,6 +293,7 @@
               <button type="button" class="btn btn-sm btn-link p-0 ml-2" id="multiShowBtn">show list</button>
               <ul id="multiList" style="display:none;margin:6px 0 0 20px;font-size:.78rem;"></ul>
             </div>
+            <div id="directScopeWarn" class="alert alert-warning py-2" style="display:none;font-size:.84rem;"></div>
           </div>
 
           <div class="send-warn" id="sendWarn" style="display:none;">
@@ -296,16 +341,19 @@ var VARIABLES = {{ variables_json|safe }};
 var FILTER_DATA = {{ filter_data_json|safe }};
 var DRAFT_DATA = {{ draft_json|safe }};
 var URLS = {
-  previewRender:  '{% url "notifications:api-preview-render" %}',
-  validate:       '{% url "notifications:api-validate" %}',
-  recipientCount: '{% url "notifications:api-recipient-count" %}',
-  templateJson:   '{% url "notifications:template-json" pk=0 %}'.replace('/0/', '/{id}/'),
-  draftSave:      '{% url "notifications:api-draft-save" %}'
+  previewRender:    '{% url "notifications:api-preview-render" %}',
+  validate:         '{% url "notifications:api-validate" %}',
+  recipientCount:   '{% url "notifications:api-recipient-count" %}',
+  templateJson:     '{% url "notifications:template-json" pk=0 %}'.replace('/0/', '/{id}/'),
+  draftSave:        '{% url "notifications:api-draft-save" %}',
+  userSearch:       '{% url "notifications:api-user-search" %}',
+  userBulkResolve:  '{% url "notifications:api-user-bulk-resolve" %}'
 };
 </script>
 <script src="{% static 'coldfront_notifications/vendor/tinymce/tinymce.min.js' %}"></script>
 <script src="{% static 'coldfront_notifications/js/tinymce_init.js' %}"></script>
 <script src="{% static 'coldfront_notifications/js/compose_filters.js' %}"></script>
+<script src="{% static 'coldfront_notifications/js/compose_direct_select.js' %}"></script>
 <script src="{% static 'coldfront_notifications/js/compose_validate.js' %}"></script>
 <script src="{% static 'coldfront_notifications/js/compose_templates.js' %}"></script>
 <script src="{% static 'coldfront_notifications/js/compose_preview.js' %}"></script>
