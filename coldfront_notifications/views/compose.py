@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections import Counter
 from typing import Any
 
@@ -40,6 +41,34 @@ User = get_user_model()
 logger = logging.getLogger(__name__)
 
 SCOPE_ORDER = ["user", "project", "allocation"]
+
+
+def _parse_json(raw: str, default: Any = None) -> Any:
+    """Safely parse a JSON string, returning *default* on failure."""
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return default
+
+
+def _normalize_filter_keys(filters: dict):
+    """Ensure all standard filter keys are present as lists."""
+    for key in ("projects", "allocations", "resources", "departments", "statuses", "roles"):
+        filters.setdefault(key, [])
+        if not isinstance(filters[key], list):
+            filters[key] = [filters[key]]
+
+
+def _serialize_user(user) -> dict:
+    """Build the standard user-info dict used by JSON API responses."""
+    return {
+        "pk": user.pk,
+        "username": user.username,
+        "email": user.email,
+        "full_name": user.get_full_name() or user.username,
+    }
 
 
 def resolve_scope(subject: str, body: str, filters: dict) -> str:
@@ -145,7 +174,7 @@ class ComposeView(StaffRequiredMixin, TemplateView):
         template_id = request.POST.get("template_id")
         draft_pk = request.POST.get("draft_pk")
 
-        dedupe_users = self._parse_json(request.POST.get("dedupe_users", "[]"), [])
+        dedupe_users = _parse_json(request.POST.get("dedupe_users", "[]"), [])
         if not isinstance(dedupe_users, list):
             dedupe_users = []
 
@@ -250,7 +279,7 @@ class ComposeView(StaffRequiredMixin, TemplateView):
         }
         if selection_mode == "direct":
             raw_pks = request.POST.get("direct_user_pks", "[]")
-            result["direct_user_pks"] = ComposeView._parse_json(raw_pks, [])
+            result["direct_user_pks"] = _parse_json(raw_pks, [])
         return result
 
     @staticmethod
@@ -262,15 +291,6 @@ class ComposeView(StaffRequiredMixin, TemplateView):
             return value if isinstance(value, list) else [value]
         except (ValueError, TypeError):
             return [raw]
-
-    @staticmethod
-    def _parse_json(raw: str, default: Any = None) -> Any:
-        if not raw:
-            return default
-        try:
-            return json.loads(raw)
-        except (ValueError, TypeError):
-            return default
 
 
 class RecipientCountView(StaffRequiredMixin, View):
@@ -440,15 +460,15 @@ class PreviewRenderView(StaffRequiredMixin, View):
     def post(self, request, *args: Any, **kwargs: Any) -> JsonResponse:
         subject = request.POST.get("subject", "")
         body = request.POST.get("body", "")
-        filters = self._parse_json(request.POST.get("filters", ""), {}) or {}
-        dedupe_users = self._parse_json(request.POST.get("dedupe_users", ""), []) or []
+        filters = _parse_json(request.POST.get("filters", ""), {}) or {}
+        dedupe_users = _parse_json(request.POST.get("dedupe_users", ""), []) or []
 
         try:
             limit = max(1, min(10, int(request.POST.get("limit", PREVIEW_RENDER_LIMIT))))
         except (ValueError, TypeError):
             limit = 3
 
-        self._normalize_filter_keys(filters)
+        _normalize_filter_keys(filters)
 
         tokens = extract_tokens(subject, body)
         variables_by_key = {
@@ -500,22 +520,6 @@ class PreviewRenderView(StaffRequiredMixin, View):
             "scope": scope,
         })
 
-    @staticmethod
-    def _parse_json(raw: str, default: Any = None) -> Any:
-        if not raw:
-            return default
-        try:
-            return json.loads(raw)
-        except (ValueError, TypeError):
-            return default
-
-    @staticmethod
-    def _normalize_filter_keys(filters: dict):
-        for key in ("projects", "allocations", "resources", "departments", "statuses", "roles"):
-            filters.setdefault(key, [])
-            if not isinstance(filters[key], list):
-                filters[key] = [filters[key]]
-
 
 class ValidateView(StaffRequiredMixin, View):
     """Pre-flight validation — called from compose JS before Send."""
@@ -523,10 +527,10 @@ class ValidateView(StaffRequiredMixin, View):
     def post(self, request, *args: Any, **kwargs: Any) -> JsonResponse:
         subject = request.POST.get("subject", "")
         body = request.POST.get("body", "")
-        filters = PreviewRenderView._parse_json(request.POST.get("filters", ""), {}) or {}
-        dedupe_users = PreviewRenderView._parse_json(request.POST.get("dedupe_users", ""), []) or []
+        filters = _parse_json(request.POST.get("filters", ""), {}) or {}
+        dedupe_users = _parse_json(request.POST.get("dedupe_users", ""), []) or []
 
-        PreviewRenderView._normalize_filter_keys(filters)
+        _normalize_filter_keys(filters)
 
         logger.debug(
             "ValidateView: selection_mode=%s, direct_user_pks=%s",
@@ -636,16 +640,7 @@ class UserSearchView(StaffRequiredMixin, View):
                 | Q(full_name__icontains=q)
             )
         users = users.order_by("username")[:limit]
-        results = [
-            {
-                "pk": u.pk,
-                "username": u.username,
-                "email": u.email,
-                "full_name": u.get_full_name() or u.username,
-            }
-            for u in users
-        ]
-        return JsonResponse({"results": results})
+        return JsonResponse({"results": [_serialize_user(u) for u in users]})
 
 
 class UserBulkResolveView(StaffRequiredMixin, View):
@@ -653,24 +648,36 @@ class UserBulkResolveView(StaffRequiredMixin, View):
 
     def post(self, request, *args: Any, **kwargs: Any) -> JsonResponse:
         raw = request.POST.get("identifiers", "")
-        lines = [line.strip() for line in raw.splitlines() if line.strip()]
+        # Split on newlines, commas, semicolons, tabs, and spaces to
+        # support CSV paste, spreadsheet paste, and plain lists.
+        # (Usernames and emails never contain spaces, so this is safe.)
+        identifiers = [
+            item.strip()
+            for item in re.split(r"[\n,;\t ]+", raw)
+            if item.strip()
+        ]
+        if not identifiers:
+            return JsonResponse({"found": [], "not_found": []})
+
+        # Batch-resolve: two queries instead of one per identifier.
+        lowered = [ident.lower() for ident in identifiers]
+        users_by_username = {
+            u.username.lower(): u
+            for u in User.objects.filter(username__iregex=r"^(" + "|".join(re.escape(i) for i in lowered) + r")$", is_active=True)
+        }
+        users_by_email = {
+            u.email.lower(): u
+            for u in User.objects.filter(email__iregex=r"^(" + "|".join(re.escape(i) for i in lowered) + r")$", is_active=True)
+        }
 
         found = []
         seen_pks = set()
         not_found = []
-        for identifier in lines:
-            user = User.objects.filter(
-                Q(username__iexact=identifier) | Q(email__iexact=identifier),
-                is_active=True,
-            ).first()
+        for identifier in identifiers:
+            user = users_by_username.get(identifier.lower()) or users_by_email.get(identifier.lower())
             if user and user.pk not in seen_pks:
                 seen_pks.add(user.pk)
-                found.append({
-                    "pk": user.pk,
-                    "username": user.username,
-                    "email": user.email,
-                    "full_name": user.get_full_name() or user.username,
-                })
+                found.append(_serialize_user(user))
             elif not user:
                 not_found.append(identifier)
 
@@ -688,8 +695,8 @@ class DraftSaveView(StaffRequiredMixin, View):
         reply_to = request.POST.get("reply_to", "")
         template_id = request.POST.get("template_id") or None
 
-        filters = PreviewRenderView._parse_json(request.POST.get("filters", ""), {}) or {}
-        extra_context = PreviewRenderView._parse_json(request.POST.get("extra_context", ""), {}) or {}
+        filters = _parse_json(request.POST.get("filters", ""), {}) or {}
+        extra_context = _parse_json(request.POST.get("extra_context", ""), {}) or {}
 
         draft_fields = {
             "subject": subject,
