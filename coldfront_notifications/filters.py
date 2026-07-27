@@ -15,6 +15,7 @@ from collections import defaultdict
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.db.models import Case, IntegerField, Value, When
 
 from coldfront.core.allocation.models import (
     Allocation,
@@ -265,6 +266,14 @@ FILTER_REGISTRY: dict[str, type[BaseFilter]] = {
 PROJECT_FILTERS = ("departments", "projects", "roles")
 ALLOCATION_FILTERS = ("allocations", "resources", "statuses")
 
+PI_PRIORITY_ANNOTATION = {
+    "role_priority": Case(
+        When(role__name="PI", then=Value(0)),
+        default=Value(1),
+        output_field=IntegerField(),
+    )
+}
+
 
 # FilterDataBuilder
 
@@ -376,7 +385,9 @@ class RecipientResolver:
                 "user", "project", "project__pi", "project__status", "role",
             )
             .filter(status__name="Active"),
-        ).order_by("user_id", "project_id", "pk")
+        ).annotate(**PI_PRIORITY_ANNOTATION).order_by(
+            "user_id", "role_priority", "project_id", "pk",
+        )
 
         if scope == "project":
             if self._has_allocation_filters():
@@ -436,7 +447,8 @@ class RecipientResolver:
                 "user", "project", "project__pi", "project__status", "role",
             )
             .filter(user__pk__in=pks, status__name="Active")
-            .order_by("user_id", "project_id", "pk")
+            .annotate(**PI_PRIORITY_ANNOTATION)
+            .order_by("user_id", "role_priority", "project_id", "pk")
         )
 
         if scope == "project":
@@ -464,16 +476,37 @@ class RecipientResolver:
             for allocation in allocations_by_user_project.get(key, []):
                 yield (project_user.user, project_user.project, allocation)
 
-    def enumerate_deduped(self, scope: str, dedupe_users):
-        """Wraps enumerate with per-user deduplication."""
-        dedupe = set(dedupe_users or [])
-        if not dedupe:
+    def enumerate_deduped(self, scope: str, dedupe_users=None,
+                          dedupe_selections=None):
+        """Wraps enumerate with per-user deduplication.
+
+        dedupe_users: list of usernames — keep first tuple only (legacy).
+        dedupe_selections: dict {username: [project_pk, ...]} — keep only
+            tuples whose project_pk is in the list.  Takes precedence over
+            dedupe_users for usernames present in both.
+        """
+        selections = dedupe_selections or {}
+        legacy_dedupe = set(dedupe_users or []) - set(selections.keys())
+
+        if not legacy_dedupe and not selections:
             yield from self.enumerate(scope)
             return
-        seen = set()
+
+        seen_legacy = set()
         for user, project, allocation in self.enumerate(scope):
-            if user.username in dedupe:
-                if user.pk in seen:
+            username = user.username
+
+            if username in selections:
+                keep_pks = selections[username]
+                if project and project.pk in keep_pks:
+                    yield (user, project, allocation)
+                elif not project:
+                    yield (user, project, allocation)
+                continue
+
+            if username in legacy_dedupe:
+                if user.pk in seen_legacy:
                     continue
-                seen.add(user.pk)
+                seen_legacy.add(user.pk)
+
             yield (user, project, allocation)

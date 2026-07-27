@@ -11,11 +11,18 @@ function getBodyContent() {
   return editor ? editor.getContent() : ($('#id_body').val() || '');
 }
 
+// Pending content to load once TinyMCE is ready (handles race condition
+// when setBodyContent is called before the editor finishes initializing).
+var _pendingBodyContent = null;
+var _tinymceReady = false;
+
 function setBodyContent(html) {
   var editor = tinymce.get('id_body');
-  if (editor) {
+  if (editor && _tinymceReady) {
     editor.setContent(html || '');
   } else {
+    // Editor not ready yet — stash the content for the init callback.
+    _pendingBodyContent = html || '';
     $('#id_body').val(html || '');
   }
 }
@@ -37,6 +44,15 @@ $(document).ready(function() {
     setup: function(editor) {
       editor.on('change keyup', function() {
         editor.save();
+      });
+      editor.on('init', function() {
+        _tinymceReady = true;
+        // If setBodyContent was called before the editor was ready,
+        // apply the stashed content now.
+        if (_pendingBodyContent !== null) {
+          editor.setContent(_pendingBodyContent);
+          _pendingBodyContent = null;
+        }
       });
     }
   });

@@ -154,9 +154,11 @@ class CampaignSender:
         scope = determine_scope(list(variables_by_key.values()))
         snapshot = campaign.filters_snapshot or {}
         dedupe_users = snapshot.get("dedupe_users") or []
+        dedupe_selections = snapshot.get("dedupe_selections") or {}
 
         resolved_emails = self._resolve_all_recipients(
-            tokens, variables_by_key, snapshot, scope, dedupe_users,
+            tokens, variables_by_key, snapshot, scope,
+            dedupe_users, dedupe_selections,
         )
         if resolved_emails is None:
             return  # _fail already called
@@ -175,7 +177,8 @@ class CampaignSender:
 
         self._deliver_emails(resolved_emails, snapshot)
 
-    def _resolve_all_recipients(self, tokens, variables_by_key, snapshot, scope, dedupe_users):
+    def _resolve_all_recipients(self, tokens, variables_by_key, snapshot, scope,
+                                dedupe_users, dedupe_selections):
         """Resolve template variables for every recipient.
 
         Returns a list of (user, project, allocation, rendered_subject, rendered_body)
@@ -184,7 +187,9 @@ class CampaignSender:
         resolver = RecipientResolver(snapshot)
         resolved = []
 
-        for user, project, allocation in resolver.enumerate_deduped(scope, dedupe_users):
+        for user, project, allocation in resolver.enumerate_deduped(
+            scope, dedupe_users, dedupe_selections=dedupe_selections,
+        ):
             context = {"user": user, "project": project, "allocation": allocation}
             try:
                 values = self.renderer.build_values(tokens, variables_by_key, context)

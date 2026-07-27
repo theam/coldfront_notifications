@@ -304,6 +304,17 @@ function setDedupeUsers(list) {
   $('#h_dedupe_users').val(JSON.stringify(list || []));
 }
 
+function getDedupeSelections() {
+  try {
+    var v = JSON.parse($('#h_dedupe_selections').val() || '{}');
+    return (typeof v === 'object' && !Array.isArray(v)) ? v : {};
+  } catch (e) { return {}; }
+}
+
+function setDedupeSelections(obj) {
+  $('#h_dedupe_selections').val(JSON.stringify(obj || {}));
+}
+
 
 function _invalidateValidation() {
   $('#recipNum').text('?');
@@ -313,6 +324,7 @@ function _invalidateValidation() {
   $('#sendWarn').hide();
   $('#directScopeWarn').hide();
   setDedupeUsers([]);
+  setDedupeSelections({});
   if (typeof _setValidateButtonState === 'function') _setValidateButtonState('default');
   if (typeof _hideTopValidationResult === 'function') _hideTopValidationResult();
 }

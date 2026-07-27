@@ -177,6 +177,11 @@ class ComposeView(StaffRequiredMixin, TemplateView):
         dedupe_users = _parse_json(request.POST.get("dedupe_users", "[]"), [])
         if not isinstance(dedupe_users, list):
             dedupe_users = []
+        dedupe_selections = _parse_json(
+            request.POST.get("dedupe_selections", "{}"), {},
+        )
+        if not isinstance(dedupe_selections, dict):
+            dedupe_selections = {}
 
         if not subject or not body:
             messages.error(request, "Subject and body are required.")
@@ -186,6 +191,7 @@ class ComposeView(StaffRequiredMixin, TemplateView):
             validation_result = NotificationValidator(
                 subject, body, filters,
                 dedupe_users=dedupe_users,
+                dedupe_selections=dedupe_selections,
             ).validate()
             if validation_result["errors"] or validation_result["missing_tokens"]:
                 messages.error(
@@ -199,6 +205,7 @@ class ComposeView(StaffRequiredMixin, TemplateView):
 
         filters["extra_recipients"] = extra_recipients
         filters["dedupe_users"] = dedupe_users
+        filters["dedupe_selections"] = dedupe_selections
 
         if draft_pk:
             campaign = self._update_draft(draft_pk, request.user, action, {
@@ -328,14 +335,19 @@ class RecipientCountView(StaffRequiredMixin, View):
 
     def _build_paginated_preview(self, request, filters, subject, body) -> JsonResponse:
         page, page_size = self._parse_pagination(request)
+        search_query = request.POST.get("search", "").strip().lower()
         scope = self._determine_preview_scope(filters, subject, body)
         resolver = RecipientResolver(filters)
 
-        user_info, emails_per_user, total_count = self._collect_user_stats(resolver, scope)
+        user_info, emails_per_user, total_count = self._collect_user_stats(
+            resolver, scope, search_query,
+        )
         total_pages = max(1, (total_count + page_size - 1) // page_size)
         page = min(page, total_pages)
 
-        page_rows = self._collect_page_rows(resolver, scope, page, page_size)
+        page_rows = self._collect_page_rows(
+            resolver, scope, page, page_size, search_query,
+        )
         self._enrich_with_roles(page_rows)
         multi_email_users = self._build_multi_email_list(emails_per_user, user_info)
 
@@ -367,33 +379,58 @@ class RecipientCountView(StaffRequiredMixin, View):
         return resolve_scope(subject, body, filters)
 
     @staticmethod
-    def _collect_user_stats(resolver, scope) -> tuple[dict, Counter, int]:
+    def _row_matches_search(user, project, allocation, query: str) -> bool:
+        """Check if a recipient tuple matches a search query."""
+        if not query:
+            return True
+        full_name = (user.get_full_name() or user.username).lower()
+        fields = (
+            user.username.lower(),
+            user.email.lower(),
+            full_name,
+            (project.title.lower() if project else ""),
+        )
+        return any(query in field for field in fields)
+
+    @staticmethod
+    def _collect_user_stats(resolver, scope, search_query="") -> tuple[dict, Counter, int]:
         user_info = {}
         emails_per_user = Counter()
         total_count = 0
 
         for user, project, allocation in resolver.enumerate(scope):
+            if not RecipientCountView._row_matches_search(
+                user, project, allocation, search_query,
+            ):
+                continue
             username = user.username
             emails_per_user[username] += 1
             if username not in user_info:
                 user_info[username] = {
                     "email": user.email,
                     "full_name": user.get_full_name() or user.username,
+                    "first_project_pk": project.pk if project else None,
                 }
             total_count += 1
 
         return user_info, emails_per_user, total_count
 
     @staticmethod
-    def _collect_page_rows(resolver, scope, page, page_size) -> list[dict]:
+    def _collect_page_rows(resolver, scope, page, page_size,
+                           search_query="") -> list[dict]:
         start_index = (page - 1) * page_size
         end_index = start_index + page_size
         page_rows = []
+        matched = 0
 
-        for index, (user, project, allocation) in enumerate(resolver.enumerate(scope)):
-            if index >= end_index:
+        for user, project, allocation in resolver.enumerate(scope):
+            if not RecipientCountView._row_matches_search(
+                user, project, allocation, search_query,
+            ):
+                continue
+            if matched >= end_index:
                 break
-            if index >= start_index:
+            if matched >= start_index:
                 page_rows.append({
                     "username": user.username,
                     "full_name": user.get_full_name() or user.username,
@@ -401,12 +438,14 @@ class RecipientCountView(StaffRequiredMixin, View):
                     "user_pk": user.pk,
                     "project_pk": project.pk if project else None,
                     "project_title": project.title if project else "",
+                    "allocation_pk": allocation.pk if allocation else None,
                     "allocation": (
                         f"{allocation.pk} \u2014 {allocation.get_parent_resource}"
                         if allocation
                         else ""
                     ),
                 })
+            matched += 1
 
         return page_rows
 
@@ -435,7 +474,6 @@ class RecipientCountView(StaffRequiredMixin, View):
             row["role"] = role_lookup.get((row["user_pk"], row["project_pk"]), "")
             row["project"] = row.pop("project_title")
             del row["user_pk"]
-            del row["project_pk"]
 
     @staticmethod
     def _build_multi_email_list(emails_per_user, user_info) -> list[dict]:
@@ -446,6 +484,7 @@ class RecipientCountView(StaffRequiredMixin, View):
                     "email": user_info[username]["email"],
                     "full_name": user_info[username]["full_name"],
                     "count": count,
+                    "first_project_pk": user_info[username].get("first_project_pk"),
                 }
                 for username, count in emails_per_user.items()
                 if count > 1
@@ -462,6 +501,9 @@ class PreviewRenderView(StaffRequiredMixin, View):
         body = request.POST.get("body", "")
         filters = _parse_json(request.POST.get("filters", ""), {}) or {}
         dedupe_users = _parse_json(request.POST.get("dedupe_users", ""), []) or []
+        dedupe_selections = _parse_json(
+            request.POST.get("dedupe_selections", ""), {},
+        ) or {}
 
         try:
             limit = max(1, min(10, int(request.POST.get("limit", PREVIEW_RENDER_LIMIT))))
@@ -481,7 +523,7 @@ class PreviewRenderView(StaffRequiredMixin, View):
         samples = []
         total_count = 0
         for user, project, allocation in RecipientResolver(filters).enumerate_deduped(
-            scope, dedupe_users,
+            scope, dedupe_users, dedupe_selections=dedupe_selections,
         ):
             total_count += 1
             if len(samples) >= limit:
@@ -529,6 +571,9 @@ class ValidateView(StaffRequiredMixin, View):
         body = request.POST.get("body", "")
         filters = _parse_json(request.POST.get("filters", ""), {}) or {}
         dedupe_users = _parse_json(request.POST.get("dedupe_users", ""), []) or []
+        dedupe_selections = _parse_json(
+            request.POST.get("dedupe_selections", ""), {},
+        ) or {}
 
         _normalize_filter_keys(filters)
 
@@ -545,6 +590,7 @@ class ValidateView(StaffRequiredMixin, View):
             body,
             filters,
             dedupe_users=dedupe_users,
+            dedupe_selections=dedupe_selections,
             scope_override=scope,
         ).validate()
 

@@ -70,6 +70,7 @@ function runValidation() {
       body: getBodyContent() || '',
       filters: JSON.stringify(collectFilters()),
       dedupe_users: JSON.stringify(getDedupeUsers()),
+      dedupe_selections: JSON.stringify(getDedupeSelections()),
     },
     success: function(data) {
       var userCount = data.user_count || 0;

@@ -419,6 +419,7 @@ class TestRecipientResolverDirectMode(unittest.TestCase):
 
         (MockPU.objects.select_related.return_value
          .filter.return_value
+         .annotate.return_value
          .order_by.return_value
          .iterator.return_value) = iter([pu1, pu2])
 
@@ -462,6 +463,7 @@ class TestRecipientResolverDirectMode(unittest.TestCase):
 
         (MockPU.objects.select_related.return_value
          .filter.return_value
+         .annotate.return_value
          .order_by.return_value
          .iterator.return_value) = iter([pu1])
 

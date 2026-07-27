@@ -61,6 +61,7 @@ $(document).on('click', '#previewBtn', function() {
       body:         getBodyContent()       || '',
       filters:      JSON.stringify(collectFilters()),
       dedupe_users: JSON.stringify(getDedupeUsers()),
+      dedupe_selections: JSON.stringify(getDedupeSelections()),
     },
     success: function(data) {
       PREVIEW_SAMPLES = data.samples || [];
@@ -107,7 +108,8 @@ var PREVIEW_TOTAL_PAGES = 1;
 var PREVIEW_TOTAL = 0;
 var PREVIEW_USER_COUNT = 0;
 var ALL_MULTI_USERS = [];
-var ALL_MULTI_COUNTS = {};  // username → email count (for dedup math)
+var ALL_MULTI_COUNTS = {};       // username → email count (for dedup math)
+var ALL_MULTI_FIRST_PKS = {};    // username → first (PI-priority) project_pk
 
 function renderPreviewRows() {
   // Group rows by username preserving order.
@@ -118,8 +120,7 @@ function renderPreviewRows() {
     byUser[u].push(r);
   });
 
-  var dedupeSet = {};
-  getDedupeUsers().forEach(function(u) { dedupeSet[u] = true; });
+  var selections = getDedupeSelections();
 
   // Build a set from the server's cross-page multi-user list for O(1) lookup.
   var multiSet = {};
@@ -129,23 +130,37 @@ function renderPreviewRows() {
   order.forEach(function(u) {
     var group = byUser[u];
     var isMulti = !!multiSet[u];
-    var isDeduped = !!dedupeSet[u];
+    var userSelections = selections[u] || null;
+    // User has active selections → some rows are excluded.
+    var hasExclusions = userSelections !== null;
+
     group.forEach(function(r, idx) {
       var first = idx === 0;
-      var muted = (isDeduped && !first);
-      if (isDeduped && group.length === 1 && isMulti) muted = true;
+      var projectPk = r.project_pk || '';
+
+      // A row is "kept" unless the user has made selections and this
+      // row's project_pk is not in the kept list.
+      var isKept = !hasExclusions || userSelections.indexOf(projectPk) !== -1;
+
+      var muted = hasExclusions && !isKept;
       var styleAttr = muted
         ? ' style="color:#aab0b7;text-decoration:line-through;font-style:italic;"'
         : '';
+
+      // Every row of a multi-email user gets a checkbox.
       var cbCell = '';
-      if (first && isMulti) {
-        cbCell = '<td style="text-align:center;"><input type="checkbox" class="dedupe-cb" '
-               + 'data-username="' + u + '"'
-               + (isDeduped ? ' checked' : '')
-               + ' title="send only one email to ' + u + '"></td>';
+      if (isMulti) {
+        cbCell = '<td style="text-align:center;">'
+               + '<input type="checkbox" class="dedupe-row-cb" '
+               + 'data-username="' + u + '" '
+               + 'data-project-pk="' + projectPk + '"'
+               + (isKept ? ' checked' : '')
+               + ' title="Include this row">'
+               + '</td>';
       } else {
         cbCell = '<td></td>';
       }
+
       html += '<tr' + styleAttr + '>'
         + cbCell
         + '<td>' + (r.full_name||'') + (isMulti && first ? ' <span class="badge badge-warning ml-1" style="font-size:.6rem;">multi</span>' : '') + '</td>'
@@ -158,17 +173,13 @@ function renderPreviewRows() {
   });
   $('#recipRows').html(html || '<tr><td colspan="6" class="text-center text-muted py-3">No recipients matched.</td></tr>');
 
-  // Compute effective email count: deduped users count as 1 email each.
-  var dedupeList = getDedupeUsers();
-  var dedupeSet = {};
-  dedupeList.forEach(function(u) { dedupeSet[u] = true; });
-
-  // For each multi-user that's deduped, subtract (count - 1) from total.
+  // Compute effective email count.
   var effective = PREVIEW_TOTAL;
-  if (dedupeList.length && PREVIEW_TOTAL > 0) {
+  if (PREVIEW_TOTAL > 0) {
     ALL_MULTI_USERS.forEach(function(u) {
-      if (dedupeSet[u] && ALL_MULTI_COUNTS[u]) {
-        effective -= (ALL_MULTI_COUNTS[u] - 1);
+      if (selections[u] && ALL_MULTI_COUNTS[u]) {
+        var keptCount = selections[u].length;
+        effective -= (ALL_MULTI_COUNTS[u] - keptCount);
       }
     });
   }
@@ -197,10 +208,10 @@ function updatePaginationControls() {
 
 function fetchPreviewPage(page) {
   PREVIEW_PAGE = page || 1;
-  $('#recipSearch').val('');
   $('#recipRows').html('<tr><td colspan="6" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin mr-1"></i>Loading…</td></tr>');
 
   var mode = typeof getSelectionMode === 'function' ? getSelectionMode() : 'filters';
+  var searchQuery = ($('#recipSearch').val() || '').trim();
   var postData = {
     csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
     subject:      $('#id_subject').val()   || '',
@@ -209,7 +220,8 @@ function fetchPreviewPage(page) {
     preview:      'true',
     page:         PREVIEW_PAGE,
     page_size:    getPageSize(),
-    selection_mode: mode
+    selection_mode: mode,
+    search:       searchQuery
   };
 
   if (mode === 'direct') {
@@ -239,13 +251,18 @@ function fetchPreviewPage(page) {
       PREVIEW_PAGE        = data.page || 1;
       ALL_MULTI_USERS = (data.multi_users || []).map(function(m) { return m.username; });
       ALL_MULTI_COUNTS = {};
-      (data.multi_users || []).forEach(function(m) { ALL_MULTI_COUNTS[m.username] = m.count; });
+      ALL_MULTI_FIRST_PKS = {};
+      (data.multi_users || []).forEach(function(m) {
+        ALL_MULTI_COUNTS[m.username] = m.count;
+        if (m.first_project_pk != null) ALL_MULTI_FIRST_PKS[m.username] = m.first_project_pk;
+      });
       renderPreviewRows();
       // Show dedupe-all row if any multi-email users exist across all pages
       if (ALL_MULTI_USERS.length) {
         $('#dedupeAllRow').show();
+        var sel = getDedupeSelections();
         var allDeduped = ALL_MULTI_USERS.every(function(u) {
-          return getDedupeUsers().indexOf(u) !== -1;
+          return !!sel[u];
         });
         $('#dedupeAllCb').prop('checked', allDeduped);
       } else {
@@ -279,37 +296,78 @@ $(document).on('change', '#recipPageSize', function() {
   fetchPreviewPage(1);
 });
 
-// Client-side search: filter visible rows in the current page
+// Server-side search across all recipients (debounced).
+var _searchTimer = null;
 $(document).on('input', '#recipSearch', function() {
-  var q = $(this).val().toLowerCase();
-  $('#recipRows tr').each(function() {
-    var text = $(this).text().toLowerCase();
-    $(this).toggle(!q || text.indexOf(q) !== -1);
-  });
+  clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(function() {
+    fetchPreviewPage(1);
+  }, 300);
 });
 
-// Bulk dedupe: toggle ALL multi-email users across all pages.
+// Bulk dedupe: keep only the PI/first row for every multi-email user.
 $(document).on('change', '#dedupeAllCb', function() {
   if ($(this).is(':checked')) {
-    setDedupeUsers(ALL_MULTI_USERS.slice());
+    var dedupeList = [];
+    var sel = {};
+    ALL_MULTI_USERS.forEach(function(u) {
+      dedupeList.push(u);
+      var pk = ALL_MULTI_FIRST_PKS[u];
+      if (pk != null) sel[u] = [pk];
+    });
+    setDedupeUsers(dedupeList);
+    setDedupeSelections(sel);
   } else {
     setDedupeUsers([]);
+    setDedupeSelections({});
   }
   renderPreviewRows();
   runValidation();
 });
 
-// Per-user dedupe toggle inside the modal.
-$(document).on('change', '.dedupe-cb', function() {
+// Per-row include/exclude checkbox for multi-email users.
+$(document).on('change', '.dedupe-row-cb', function() {
   var username = $(this).attr('data-username');
-  var cur = getDedupeUsers();
-  var idx = cur.indexOf(username);
+  var projectPk = $(this).attr('data-project-pk');
+  // Coerce to number if numeric (project PKs are integers)
+  if (projectPk && !isNaN(projectPk)) projectPk = parseInt(projectPk, 10);
+
+  var sel = getDedupeSelections();
+  var dedupeUsers = getDedupeUsers();
+
   if ($(this).is(':checked')) {
-    if (idx === -1) cur.push(username);
+    // Row re-included.
+    if (sel[username]) {
+      if (sel[username].indexOf(projectPk) === -1) {
+        sel[username].push(projectPk);
+      }
+      // If all rows for this user are now checked, remove from dedupe entirely.
+      var totalCount = ALL_MULTI_COUNTS[username] || 0;
+      if (sel[username].length >= totalCount) {
+        delete sel[username];
+        var idx = dedupeUsers.indexOf(username);
+        if (idx !== -1) dedupeUsers.splice(idx, 1);
+      }
+    }
   } else {
-    if (idx !== -1) cur.splice(idx, 1);
+    // Row excluded — need to build selection list of kept rows.
+    if (!sel[username]) {
+      // First exclusion for this user: collect all project_pks on this page,
+      // then remove the unchecked one.
+      var allPks = [];
+      PREVIEW_ROWS.forEach(function(r) {
+        if (r.username === username && r.project_pk) allPks.push(r.project_pk);
+      });
+      sel[username] = allPks.filter(function(pk) { return pk !== projectPk; });
+    } else {
+      sel[username] = sel[username].filter(function(pk) { return pk !== projectPk; });
+    }
+    // Ensure user is in the dedupe list so the backend filters.
+    if (dedupeUsers.indexOf(username) === -1) dedupeUsers.push(username);
   }
-  setDedupeUsers(cur);
+
+  setDedupeSelections(sel);
+  setDedupeUsers(dedupeUsers);
   renderPreviewRows();
   runValidation();
 });
