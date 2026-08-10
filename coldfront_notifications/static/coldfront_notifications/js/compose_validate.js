@@ -59,7 +59,10 @@ function runValidation() {
   var $btn = $('#recalcBtn');
   $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
   _setValidateButtonState('default');
-  _hideTopValidationResult();
+  _showTopValidationResult(
+    '<i class="fas fa-spinner fa-spin mr-1"></i>Validating…',
+    false
+  );
 
   $.ajax({
     url: URLS.validate,

@@ -408,9 +408,8 @@ class TestRecipientResolverDirectMode(unittest.TestCase):
         self.assertEqual(tuples[0], (user1, None, None))
         self.assertEqual(tuples[1], (user2, None, None))
 
-    @patch("coldfront_notifications.filters.AllocationUser")
     @patch("coldfront_notifications.filters.ProjectUser")
-    def test_enumerate_project_scope_direct(self, MockPU, MockAU):
+    def test_enumerate_project_scope_direct(self, MockPU):
         user1 = MagicMock(pk=1)
         proj1 = MagicMock(pk=10)
         proj2 = MagicMock(pk=20)
@@ -450,10 +449,11 @@ class TestRecipientResolverDirectMode(unittest.TestCase):
         self.assertEqual(len(tuples), 1)
         self.assertEqual(tuples[0], (user1, None, None))
 
-    @patch("coldfront_notifications.filters.AllocationUser")
+    @patch("coldfront_notifications.filters.Allocation")
     @patch("coldfront_notifications.filters.ProjectUser")
-    def test_enumerate_allocation_scope_direct(self, MockPU, MockAU):
-        """Allocation scope expands to (user, project, allocation) tuples."""
+    def test_enumerate_allocation_scope_direct(self, MockPU, MockAllocation):
+        """Allocation scope expands to (user, project, allocation) tuples
+        using ProjectUser membership, not AllocationUser."""
         user1 = MagicMock(pk=1)
         proj1 = MagicMock(pk=10)
         alloc1 = MagicMock(pk=100, project_id=10)
@@ -461,21 +461,18 @@ class TestRecipientResolverDirectMode(unittest.TestCase):
 
         pu1 = MagicMock(user=user1, user_id=1, project=proj1, project_id=10)
 
-        (MockPU.objects.select_related.return_value
-         .filter.return_value
-         .annotate.return_value
-         .order_by.return_value
-         .iterator.return_value) = iter([pu1])
+        pu_qs = (MockPU.objects.select_related.return_value
+                 .filter.return_value
+                 .annotate.return_value
+                 .order_by.return_value)
+        pu_qs.values_list.return_value.distinct.return_value = [10]
+        pu_qs.iterator.return_value = iter([pu1])
 
-        au1 = MagicMock(user_id=1, allocation=alloc1)
-        au1.allocation.project_id = 10
-        au2 = MagicMock(user_id=1, allocation=alloc2)
-        au2.allocation.project_id = 10
-
-        (MockAU.objects.select_related.return_value
+        (MockAllocation.objects
          .filter.return_value
+         .select_related.return_value
          .order_by.return_value
-         .iterator.return_value) = iter([au1, au2])
+         .iterator.return_value) = iter([alloc1, alloc2])
 
         resolver = RecipientResolver({"selection_mode": "direct", "direct_user_pks": [1]})
         tuples = list(resolver.enumerate("allocation"))

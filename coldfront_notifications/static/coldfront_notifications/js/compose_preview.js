@@ -121,6 +121,9 @@ function renderPreviewRows() {
   });
 
   var selections = getDedupeSelections();
+  var dedupeUsers = getDedupeUsers();
+  var legacySet = {};
+  dedupeUsers.forEach(function(u) { legacySet[u] = true; });
 
   // Build a set from the server's cross-page multi-user list for O(1) lookup.
   var multiSet = {};
@@ -131,16 +134,28 @@ function renderPreviewRows() {
     var group = byUser[u];
     var isMulti = !!multiSet[u];
     var userSelections = selections[u] || null;
+    // User is in legacy dedupe (first-tuple-only) if in dedupe_users
+    // but NOT in dedupe_selections.
+    var isLegacyDeduped = !!legacySet[u] && userSelections === null;
     // User has active selections → some rows are excluded.
-    var hasExclusions = userSelections !== null;
+    var hasExclusions = userSelections !== null || isLegacyDeduped;
 
     group.forEach(function(r, idx) {
       var first = idx === 0;
       var projectPk = r.project_pk || '';
 
-      // A row is "kept" unless the user has made selections and this
-      // row's project_pk is not in the kept list.
-      var isKept = !hasExclusions || userSelections.indexOf(projectPk) !== -1;
+      // A row is "kept" if:
+      // - no exclusions active, OR
+      // - legacy dedupe: only the first row is kept, OR
+      // - selections: row's project_pk is in the kept list.
+      var isKept;
+      if (!hasExclusions) {
+        isKept = true;
+      } else if (isLegacyDeduped) {
+        isKept = first;
+      } else {
+        isKept = userSelections.indexOf(projectPk) !== -1;
+      }
 
       var muted = hasExclusions && !isKept;
       var styleAttr = muted
@@ -177,9 +192,14 @@ function renderPreviewRows() {
   var effective = PREVIEW_TOTAL;
   if (PREVIEW_TOTAL > 0) {
     ALL_MULTI_USERS.forEach(function(u) {
-      if (selections[u] && ALL_MULTI_COUNTS[u]) {
-        var keptCount = selections[u].length;
-        effective -= (ALL_MULTI_COUNTS[u] - keptCount);
+      var count = ALL_MULTI_COUNTS[u] || 0;
+      if (count <= 1) return;
+      if (selections[u]) {
+        // Per-user selections: keep only the selected project rows.
+        effective -= (count - selections[u].length);
+      } else if (legacySet[u]) {
+        // Legacy dedupe: keep only one email per user.
+        effective -= (count - 1);
       }
     });
   }
@@ -261,8 +281,11 @@ function fetchPreviewPage(page) {
       if (ALL_MULTI_USERS.length) {
         $('#dedupeAllRow').show();
         var sel = getDedupeSelections();
+        var dedupeList = getDedupeUsers();
+        var dedupeSet = {};
+        dedupeList.forEach(function(u) { dedupeSet[u] = true; });
         var allDeduped = ALL_MULTI_USERS.every(function(u) {
-          return !!sel[u];
+          return !!sel[u] || !!dedupeSet[u];
         });
         $('#dedupeAllCb').prop('checked', allDeduped);
       } else {
@@ -305,18 +328,16 @@ $(document).on('input', '#recipSearch', function() {
   }, 300);
 });
 
-// Bulk dedupe: keep only the PI/first row for every multi-email user.
+// Bulk dedupe: keep only the first (PI-priority) row for every multi-email user.
+// Uses the legacy dedupe_users path which keeps the first tuple only,
+// regardless of scope.  Per-row checkboxes move individual users into
+// dedupe_selections for fine-grained control.
 $(document).on('change', '#dedupeAllCb', function() {
   if ($(this).is(':checked')) {
-    var dedupeList = [];
-    var sel = {};
-    ALL_MULTI_USERS.forEach(function(u) {
-      dedupeList.push(u);
-      var pk = ALL_MULTI_FIRST_PKS[u];
-      if (pk != null) sel[u] = [pk];
-    });
+    var dedupeList = ALL_MULTI_USERS.slice();
     setDedupeUsers(dedupeList);
-    setDedupeSelections(sel);
+    // Clear per-user selections so the legacy first-tuple path is used.
+    setDedupeSelections({});
   } else {
     setDedupeUsers([]);
     setDedupeSelections({});
@@ -326,6 +347,8 @@ $(document).on('change', '#dedupeAllCb', function() {
 });
 
 // Per-row include/exclude checkbox for multi-email users.
+// When a user was in legacy dedupe (first-tuple-only via dedupe_users),
+// any per-row change moves them to dedupe_selections for fine-grained control.
 $(document).on('change', '.dedupe-row-cb', function() {
   var username = $(this).attr('data-username');
   var projectPk = $(this).attr('data-project-pk');
@@ -334,6 +357,15 @@ $(document).on('change', '.dedupe-row-cb', function() {
 
   var sel = getDedupeSelections();
   var dedupeUsers = getDedupeUsers();
+
+  // If user was in legacy dedupe but not yet in selections, transition them:
+  // seed selections with the first (PI-priority) project_pk so the behavior
+  // starts from the same state as "dedupe all" showed.
+  var isLegacy = dedupeUsers.indexOf(username) !== -1 && !sel[username];
+  if (isLegacy) {
+    var firstPk = ALL_MULTI_FIRST_PKS[username];
+    sel[username] = firstPk != null ? [firstPk] : [];
+  }
 
   if ($(this).is(':checked')) {
     // Row re-included.
