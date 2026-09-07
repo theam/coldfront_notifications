@@ -20,7 +20,7 @@
           <table class="table table-sm mb-0">
             <thead class="thead-light">
               <tr>
-                {% if show_dedupe %}<th style="width:40px;">Dedupe</th>{% endif %}
+                {% if show_dedupe %}<th style="width:40px;">Include</th>{% endif %}
                 <th>Name</th><th>Email</th><th>Role</th><th>Project</th><th>Allocation</th>
               </tr>
             </thead>
@@ -28,10 +28,10 @@
             <tbody id="dedupeAllRow" style="display:none;">
               <tr style="background:#f8f9fa;">
                 <td style="text-align:center;">
-                  <input type="checkbox" id="dedupeAllCb" title="Dedupe all">
+                  <input type="checkbox" id="dedupeAllCb" title="Keep only PI row for all">
                 </td>
                 <td colspan="5" style="font-size:.78rem;color:#6c757d;">
-                  <strong>Dedupe all</strong> &mdash; send at most one email per user
+                  <strong>Dedupe all</strong> &mdash; keep only PI/first row per user
                 </td>
               </tr>
             </tbody>

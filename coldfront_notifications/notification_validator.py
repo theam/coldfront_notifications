@@ -30,11 +30,13 @@ class NotificationValidator:
     """
 
     def __init__(self, subject: str, body: str, filters: dict,
-                 dedupe_users=None, scope_override=None):
+                 dedupe_users=None, dedupe_selections=None,
+                 scope_override=None):
         self.subject = subject
         self.body = body
         self.filters = filters
         self.dedupe_users = dedupe_users
+        self.dedupe_selections = dedupe_selections
         self.scope_override = scope_override
 
     def validate(self) -> dict:
@@ -54,7 +56,10 @@ class NotificationValidator:
         emails_per_user = Counter()
 
         resolver = RecipientResolver(self.filters)
-        for user, project, allocation in resolver.enumerate_deduped(scope, self.dedupe_users):
+        for user, project, allocation in resolver.enumerate_deduped(
+            scope, self.dedupe_users,
+            dedupe_selections=self.dedupe_selections,
+        ):
             unique_user_pks.add(user.pk)
             emails_per_user[user.username] += 1
             context = {"user": user, "project": project, "allocation": allocation}

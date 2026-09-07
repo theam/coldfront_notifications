@@ -247,5 +247,116 @@ class TestNotificationValidator(unittest.TestCase):
         self.assertEqual(result["scope"], "allocation")
 
 
+class TestNotificationValidatorDirectMode(unittest.TestCase):
+    """NotificationValidator with direct user selection."""
+
+    PATCH_RESOLVER = "coldfront_notifications.notification_validator.RecipientResolver"
+    PATCH_RESOLVE = "coldfront_notifications.notification_validator.resolver_registry.resolve"
+
+    def _patch_nv_objects(self, return_value):
+        patcher = patch(
+            "coldfront_notifications.models.NotificationVariable.objects"
+        )
+        mock_objects = patcher.start()
+        mock_objects.filter.return_value = return_value
+        self.addCleanup(patcher.stop)
+
+    def _make_var(self, key, source="query", resolver_key="user.email",
+                  value="", is_required=True):
+        variable = MagicMock()
+        variable.key = key
+        variable.source = source
+        variable.Source.QUERY = "query"
+        variable.Source.MANUAL = "manual"
+        variable.resolver_key = resolver_key
+        variable.value = value
+        variable.is_required = is_required
+        return variable
+
+    def _make_user(self, pk, username, email):
+        user = MagicMock()
+        user.pk = pk
+        user.username = username
+        user.email = email
+        user.get_full_name.return_value = username
+        return user
+
+    def _patch_recipient_resolver(self, tuples):
+        mock_resolver_instance = MagicMock()
+        mock_resolver_instance.enumerate_deduped.return_value = iter(tuples)
+        patcher = patch(
+            self.PATCH_RESOLVER,
+            return_value=mock_resolver_instance,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_direct_mode_user_scope_no_tokens(self):
+        """With no template variables, scope stays 'user' — one email per user."""
+        self._patch_nv_objects([])
+
+        user1 = self._make_user(1, "alice", "alice@test.com")
+        user2 = self._make_user(2, "bob", "bob@test.com")
+        self._patch_recipient_resolver([
+            (user1, None, None),
+            (user2, None, None),
+        ])
+
+        filters = {"selection_mode": "direct", "direct_user_pks": [1, 2]}
+        result = NotificationValidator("Hello", "body", filters).validate()
+
+        self.assertEqual(result["scope"], "user")
+        self.assertEqual(result["user_count"], 2)
+        self.assertEqual(result["email_count"], 2)
+        self.assertEqual(result["errors"], [])
+
+    def test_direct_mode_user_scope_with_user_vars(self):
+        """User-scoped variables keep scope at 'user'."""
+        variable = self._make_var("name", resolver_key="user.full_name")
+        self._patch_nv_objects([variable])
+
+        user1 = self._make_user(1, "alice", "alice@test.com")
+        self._patch_recipient_resolver([(user1, None, None)])
+
+        filters = {"selection_mode": "direct", "direct_user_pks": [1]}
+        with patch(self.PATCH_RESOLVE, return_value="Alice"):
+            result = NotificationValidator("Hi {{name}}", "body", filters).validate()
+
+        self.assertEqual(result["scope"], "user")
+        self.assertEqual(result["user_count"], 1)
+        self.assertEqual(result["email_count"], 1)
+
+    def test_direct_mode_project_scope_with_project_vars(self):
+        """Project-scoped variables elevate scope to 'project'."""
+        variable = self._make_var("ptitle", resolver_key="project.title")
+        self._patch_nv_objects([variable])
+
+        user1 = self._make_user(1, "alice", "alice@test.com")
+        proj1 = MagicMock(title="Alpha", pk=10)
+        proj2 = MagicMock(title="Beta", pk=20)
+        self._patch_recipient_resolver([
+            (user1, proj1, None),
+            (user1, proj2, None),
+        ])
+
+        filters = {"selection_mode": "direct", "direct_user_pks": [1]}
+        with patch(self.PATCH_RESOLVE, return_value="Title"):
+            result = NotificationValidator("Re: {{ptitle}}", "body", filters).validate()
+
+        self.assertEqual(result["scope"], "project")
+        self.assertEqual(result["user_count"], 1)
+        self.assertEqual(result["email_count"], 2)
+
+    def test_direct_mode_passes_filters_to_resolver(self):
+        """The filters dict (with selection_mode) is passed to RecipientResolver."""
+        self._patch_nv_objects([])
+
+        filters = {"selection_mode": "direct", "direct_user_pks": [1, 2, 3]}
+        with patch(self.PATCH_RESOLVER) as MockResolver:
+            MockResolver.return_value.enumerate_deduped.return_value = iter([])
+            NotificationValidator("subj", "body", filters).validate()
+            MockResolver.assert_called_once_with(filters)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -15,11 +15,11 @@ from collections import defaultdict
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.db.models import Case, IntegerField, Value, When
 
 from coldfront.core.allocation.models import (
     Allocation,
     AllocationStatusChoice,
-    AllocationUser,
 )
 from coldfront.core.department.models import Department
 from coldfront.core.project.models import Project, ProjectUser, ProjectUserRoleChoice
@@ -265,6 +265,14 @@ FILTER_REGISTRY: dict[str, type[BaseFilter]] = {
 PROJECT_FILTERS = ("departments", "projects", "roles")
 ALLOCATION_FILTERS = ("allocations", "resources", "statuses")
 
+PI_PRIORITY_ANNOTATION = {
+    "role_priority": Case(
+        When(role__name="PI", then=Value(0)),
+        default=Value(1),
+        output_field=IntegerField(),
+    )
+}
+
 
 # FilterDataBuilder
 
@@ -288,10 +296,19 @@ class RecipientResolver:
 
     Accepts the filters dict from the compose POST and produces User
     querysets or (user, project, allocation) tuples for email rendering.
+
+    Supports two modes (via ``selection_mode`` key in filters):
+      - ``"filters"`` (default): narrow recipients through filter cascade
+      - ``"direct"``: hand-pick users by PK via ``direct_user_pks``
     """
 
     def __init__(self, filters: dict):
         self.filters = filters
+
+    def _is_direct_mode(self) -> bool:
+        return self.filters.get("selection_mode") == "direct"
+
+    # ── filter-mode helpers ─────────────────────────────────────────
 
     def _apply_project_filters(self, project_users):
         for name in PROJECT_FILTERS:
@@ -311,23 +328,31 @@ class RecipientResolver:
     def _has_allocation_filters(self):
         return any(self.filters.get(name) for name in ALLOCATION_FILTERS)
 
+    def _matching_project_ids(self):
+        """Return project IDs from allocations that match the allocation filters."""
+        return (
+            self._apply_allocation_filters()
+            .values_list("project_id", flat=True)
+            .distinct()
+        )
+
+    # ── public API ──────────────────────────────────────────────────
+
     def queryset(self):
         """Return a deduplicated User queryset matching the filters."""
+        if self._is_direct_mode():
+            pks = self.filters.get("direct_user_pks") or []
+            return User.objects.filter(pk__in=pks)
+
         project_users = self._apply_project_filters(
             ProjectUser.objects.select_related("user", "project")
             .filter(status__name="Active"),
         )
 
         if self._has_allocation_filters():
-            allocation_user_pks = (
-                AllocationUser.objects
-                .filter(
-                    allocation__in=self._apply_allocation_filters(),
-                    status__name="Active",
-                )
-                .values_list("user__pk", flat=True)
+            project_users = project_users.filter(
+                project_id__in=self._matching_project_ids()
             )
-            project_users = project_users.filter(user__pk__in=allocation_user_pks)
 
         user_pks = project_users.values_list("user__pk", flat=True).distinct()
         return User.objects.filter(pk__in=user_pks)
@@ -346,6 +371,10 @@ class RecipientResolver:
         if scope not in ("user", "project", "allocation"):
             raise ValueError(f"Unknown scope {scope!r}")
 
+        if self._is_direct_mode():
+            yield from self._enumerate_direct(scope)
+            return
+
         if scope == "user":
             for user in self.queryset().iterator():
                 yield (user, None, None)
@@ -357,55 +386,112 @@ class RecipientResolver:
                 "user", "project", "project__pi", "project__status", "role",
             )
             .filter(status__name="Active"),
-        ).order_by("user_id", "project_id", "pk")
+        ).annotate(**PI_PRIORITY_ANNOTATION).order_by(
+            "user_id", "role_priority", "project_id", "pk",
+        )
 
         if scope == "project":
             if self._has_allocation_filters():
-                allocation_user_pks = (
-                    AllocationUser.objects
-                    .filter(
-                        allocation__in=self._apply_allocation_filters(),
-                        status__name="Active",
-                    )
-                    .values_list("user__pk", flat=True)
-                    .distinct()
+                project_users = project_users.filter(
+                    project_id__in=self._matching_project_ids()
                 )
-                project_users = project_users.filter(user__pk__in=allocation_user_pks)
             for project_user in project_users.iterator():
                 yield (project_user.user, project_user.project, None)
             return
 
         # scope == "allocation"
-        matched_allocations = self._apply_allocation_filters()
-        allocation_users = (
-            AllocationUser.objects
-            .select_related(
-                "allocation", "allocation__status", "allocation__project",
-            )
-            .filter(allocation__in=matched_allocations, status__name="Active")
-            .order_by("user_id", "allocation_id", "pk")
+        matched_allocations = (
+            self._apply_allocation_filters()
+            .select_related("status", "project")
+            .order_by("project_id", "pk")
         )
 
-        allocations_by_user_project = defaultdict(list)
-        for allocation_user in allocation_users.iterator():
-            key = (allocation_user.user_id, allocation_user.allocation.project_id)
-            allocations_by_user_project[key].append(allocation_user.allocation)
+        allocations_by_project = defaultdict(list)
+        for allocation in matched_allocations.iterator():
+            allocations_by_project[allocation.project_id].append(allocation)
 
         for project_user in project_users.iterator():
-            key = (project_user.user_id, project_user.project_id)
-            for allocation in allocations_by_user_project.get(key, []):
+            for allocation in allocations_by_project.get(project_user.project_id, []):
                 yield (project_user.user, project_user.project, allocation)
 
-    def enumerate_deduped(self, scope: str, dedupe_users):
-        """Wraps enumerate with per-user deduplication."""
-        dedupe = set(dedupe_users or [])
-        if not dedupe:
+    # ── direct-mode enumeration ─────────────────────────────────────
+
+    def _enumerate_direct(self, scope: str):
+        """Yield tuples for directly-selected users, expanding to their
+        projects/allocations when the template scope demands it."""
+        pks = self.filters.get("direct_user_pks") or []
+        if not pks:
+            return
+
+        if scope == "user":
+            for user in User.objects.filter(pk__in=pks).iterator():
+                yield (user, None, None)
+            return
+
+        # Expand to active project memberships
+        project_users = (
+            ProjectUser.objects
+            .select_related(
+                "user", "project", "project__pi", "project__status", "role",
+            )
+            .filter(user__pk__in=pks, status__name="Active")
+            .annotate(**PI_PRIORITY_ANNOTATION)
+            .order_by("user_id", "role_priority", "project_id", "pk")
+        )
+
+        if scope == "project":
+            for project_user in project_users.iterator():
+                yield (project_user.user, project_user.project, None)
+            return
+
+        # scope == "allocation" — expand to allocations on the user's projects
+        project_id_subquery = project_users.values_list("project_id", flat=True).distinct()
+        allocations = (
+            Allocation.objects
+            .filter(project_id__in=project_id_subquery)
+            .select_related("status", "project")
+            .order_by("project_id", "pk")
+        )
+
+        allocations_by_project = defaultdict(list)
+        for allocation in allocations.iterator():
+            allocations_by_project[allocation.project_id].append(allocation)
+
+        for project_user in project_users.iterator():
+            for allocation in allocations_by_project.get(project_user.project_id, []):
+                yield (project_user.user, project_user.project, allocation)
+
+    def enumerate_deduped(self, scope: str, dedupe_users=None,
+                          dedupe_selections=None):
+        """Wraps enumerate with per-user deduplication.
+
+        dedupe_users: list of usernames — keep first tuple only (legacy).
+        dedupe_selections: dict {username: [project_pk, ...]} — keep only
+            tuples whose project_pk is in the list.  Takes precedence over
+            dedupe_users for usernames present in both.
+        """
+        selections = dedupe_selections or {}
+        legacy_dedupe = set(dedupe_users or []) - set(selections.keys())
+
+        if not legacy_dedupe and not selections:
             yield from self.enumerate(scope)
             return
-        seen = set()
+
+        seen_legacy = set()
         for user, project, allocation in self.enumerate(scope):
-            if user.username in dedupe:
-                if user.pk in seen:
+            username = user.username
+
+            if username in selections:
+                keep_pks = selections[username]
+                if project and project.pk in keep_pks:
+                    yield (user, project, allocation)
+                elif not project:
+                    yield (user, project, allocation)
+                continue
+
+            if username in legacy_dedupe:
+                if user.pk in seen_legacy:
                     continue
-                seen.add(user.pk)
+                seen_legacy.add(user.pk)
+
             yield (user, project, allocation)

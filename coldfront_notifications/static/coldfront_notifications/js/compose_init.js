@@ -9,12 +9,19 @@
 // ── Serialize filter hidden fields before submit ─────────────────
 $('#notifForm').on('submit', function() {
   if (typeof tinymce !== 'undefined') tinymce.triggerSave();
-  $('#h_projects').val(JSON.stringify($('#f_project').val() || []));
-  $('#h_allocations').val(JSON.stringify($('#f_allocation').val() || []));
-  $('#h_depts').val(JSON.stringify($('#f_dept').val() || []));
-  $('#h_resources').val(JSON.stringify($('#f_resource').val() || []));
-  $('#h_statuses').val(JSON.stringify($('#f_status').val() || []));
-  $('#h_roles').val(JSON.stringify($('#f_role').val() || []));
+  var mode = typeof getSelectionMode === 'function' ? getSelectionMode() : 'filters';
+  $('#h_selection_mode').val(mode);
+  if (mode === 'direct') {
+    var pks = typeof getDirectUserPks === 'function' ? getDirectUserPks() : [];
+    $('#h_direct_user_pks').val(JSON.stringify(pks));
+  } else {
+    $('#h_projects').val(JSON.stringify($('#f_project').val() || []));
+    $('#h_allocations').val(JSON.stringify($('#f_allocation').val() || []));
+    $('#h_depts').val(JSON.stringify($('#f_dept').val() || []));
+    $('#h_resources').val(JSON.stringify($('#f_resource').val() || []));
+    $('#h_statuses').val(JSON.stringify($('#f_status').val() || []));
+    $('#h_roles').val(JSON.stringify($('#f_role').val() || []));
+  }
   if (typeof DRAFT_PK !== 'undefined' && DRAFT_PK) {
     $('#hidden_draft_pk').val(DRAFT_PK);
   }

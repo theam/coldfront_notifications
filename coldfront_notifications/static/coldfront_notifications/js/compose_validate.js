@@ -59,7 +59,10 @@ function runValidation() {
   var $btn = $('#recalcBtn');
   $btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i>');
   _setValidateButtonState('default');
-  _hideTopValidationResult();
+  _showTopValidationResult(
+    '<i class="fas fa-spinner fa-spin mr-1"></i>Validating…',
+    false
+  );
 
   $.ajax({
     url: URLS.validate,
@@ -70,6 +73,7 @@ function runValidation() {
       body: getBodyContent() || '',
       filters: JSON.stringify(collectFilters()),
       dedupe_users: JSON.stringify(getDedupeUsers()),
+      dedupe_selections: JSON.stringify(getDedupeSelections()),
     },
     success: function(data) {
       var userCount = data.user_count || 0;
@@ -83,7 +87,10 @@ function runValidation() {
 
       // Filter summary bar
       var activeFilters = data.active_filters || [];
+      var selMode = data.selection_mode || 'filters';
       if (activeFilters.length) {
+        var icon = selMode === 'direct' ? 'fa-user-check' : 'fa-filter';
+        var label = selMode === 'direct' ? 'Recipients:' : 'Filters:';
         var chips = activeFilters.map(function(filter) {
           var values = filter.values.map(function(value) {
             return '<strong>' + $('<span>').text(value).html() + '</strong>';
@@ -91,7 +98,7 @@ function runValidation() {
           return '<span class="fs-chip">' + $('<span>').text(filter.label).html() + ': ' + values + '</span>';
         }).join('');
         $('#filterSummaryBar')
-          .html('<div class="filter-summary-bar"><span class="fs-label"><i class="fas fa-filter mr-1"></i>Filters:</span>' + chips + '</div>')
+          .html('<div class="filter-summary-bar"><span class="fs-label"><i class="fas ' + icon + ' mr-1"></i>' + label + '</span>' + chips + '</div>')
           .show();
       } else {
         $('#filterSummaryBar')
@@ -115,6 +122,27 @@ function runValidation() {
       } else {
         $('#multiBadge').hide();
         $('#multiWarn').hide();
+      }
+
+      // Direct mode: warn if scope excluded some selected users
+      var scope = data.scope || 'user';
+      if (selMode === 'direct' && data.direct_selected_count && data.direct_selected_count > userCount) {
+        var excluded = data.direct_selected_count - userCount;
+        var scopeLabels = {
+          project: 'active project memberships',
+          allocation: 'active allocations'
+        };
+        var scopeLabel = scopeLabels[scope] || scope + ' context';
+        $('#directScopeWarn')
+          .html(
+            '<i class="fas fa-exclamation-triangle mr-1"></i>' +
+            '<strong>' + excluded + ' of ' + data.direct_selected_count + ' selected user(s)</strong> ' +
+            'will not receive an email because they have no ' + scopeLabel + '. ' +
+            'The template uses <strong>' + scope + '-scoped</strong> variables that require this context.'
+          )
+          .show();
+      } else {
+        $('#directScopeWarn').hide();
       }
 
       $('#previewRecipBtn').prop('disabled', userCount === 0);

@@ -27,6 +27,10 @@ function _markClean(timestamp) {
 }
 
 function _collectDraftData() {
+  var filters = collectFilters();
+  // Include dedupe state in the filters snapshot so drafts restore it.
+  filters.dedupe_users = getDedupeUsers();
+  filters.dedupe_selections = getDedupeSelections();
   return {
     csrfmiddlewaretoken: $('input[name=csrfmiddlewaretoken]').val(),
     draft_pk: DRAFT_PK || '',
@@ -35,7 +39,7 @@ function _collectDraftData() {
     sender: $('#id_sender').val() || '',
     reply_to: $('#id_reply_to').val() || '',
     template_id: $('#hidden_template_id').val() || '',
-    filters: JSON.stringify(collectFilters()),
+    filters: JSON.stringify(filters),
     extra_context: JSON.stringify({})
   };
 }
@@ -109,24 +113,33 @@ function restoreDraft(draftData) {
 
   // Wait for Select2 and FilterStore to be initialized
   setTimeout(function() {
-    for (var filterName in filterMap) {
-      var values = filters[filterName] || [];
-      if (!values.length) continue;
-
-      var state = FilterStore.state[filterName];
-      if (!state) continue;
-
-      // Coerce types to match the option IDs
-      var firstOption = state.all.length ? state.all[0] : null;
-      var useInt = firstOption && typeof firstOption.id === 'number';
-      if (useInt) {
-        values = values.map(function(value) { return parseInt(value, 10); });
+    // Check if draft used direct mode
+    if (filters.selection_mode === 'direct' && typeof switchSelectionMode === 'function') {
+      switchSelectionMode('direct');
+      var directPks = filters.direct_user_pks || [];
+      if (directPks.length && typeof restoreDirectMode === 'function') {
+        restoreDirectMode(directPks);
       }
+    } else {
+      for (var filterName in filterMap) {
+        var values = filters[filterName] || [];
+        if (!values.length) continue;
 
-      state.selected = values;
-      if (FILTERS[filterName]) {
-        FILTERS[filterName].render();
-        FILTERS[filterName].dispatchChanged();
+        var state = FilterStore.state[filterName];
+        if (!state) continue;
+
+        // Coerce types to match the option IDs
+        var firstOption = state.all.length ? state.all[0] : null;
+        var useInt = firstOption && typeof firstOption.id === 'number';
+        if (useInt) {
+          values = values.map(function(value) { return parseInt(value, 10); });
+        }
+
+        state.selected = values;
+        if (FILTERS[filterName]) {
+          FILTERS[filterName].render();
+          FILTERS[filterName].dispatchChanged();
+        }
       }
     }
 
@@ -135,9 +148,12 @@ function restoreDraft(draftData) {
       $('textarea[name="extra_recipients"]').val(filters.extra_recipients.join('\n'));
     }
 
-    // Restore dedupe users
+    // Restore dedupe users and selections
     if (filters.dedupe_users && filters.dedupe_users.length) {
       $('#h_dedupe_users').val(JSON.stringify(filters.dedupe_users));
+    }
+    if (filters.dedupe_selections && typeof filters.dedupe_selections === 'object') {
+      setDedupeSelections(filters.dedupe_selections);
     }
 
     // Highlight the matching template in the sidebar

@@ -262,10 +262,21 @@ class TestAllocationResolvers(unittest.TestCase):
 
     def test_allocation_quota(self):
         allocation = MagicMock()
+        resource = allocation.get_parent_resource
+        resource.quantity_label = "TB"
         allocation.get_attribute.return_value = 10.5
         context = self._make_context(allocation=allocation)
         self.assertEqual(resolver_registry.resolve("allocation.quota", context), "10.5")
         allocation.get_attribute.assert_called_once_with("Storage Quota (TB)")
+
+    def test_allocation_quota_tib(self):
+        allocation = MagicMock()
+        resource = allocation.get_parent_resource
+        resource.quantity_label = "TiB"
+        allocation.get_attribute.return_value = 5.0
+        context = self._make_context(allocation=allocation)
+        self.assertEqual(resolver_registry.resolve("allocation.quota", context), "5.0")
+        allocation.get_attribute.assert_called_once_with("Storage Quota (TiB)")
 
     def test_allocation_quota_none_raises(self):
         allocation = MagicMock()

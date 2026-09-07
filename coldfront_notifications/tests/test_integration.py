@@ -263,7 +263,7 @@ class BuildRecipientQuerysetTest(NotificationIntegrationTestCase):
     def test_allocation_status_filter(self):
         qs = RecipientResolver({"statuses": ["Active"]}).queryset()
         user_pks = set(qs.values_list("pk", flat=True))
-        # All users have active AllocationUser records
+        # Both projects have Active allocations → all ProjectUsers included
         self.assertIn(self.user1.pk, user_pks)
         self.assertIn(self.user2.pk, user_pks)
         self.assertIn(self.user3.pk, user_pks)
@@ -294,9 +294,12 @@ class EnumerateRecipientsTest(NotificationIntegrationTestCase):
             self.assertIsNotNone(project)
             self.assertIsNone(allocation)
 
-    def test_scope_allocation_returns_per_allocation_user(self):
+    def test_scope_allocation_returns_per_project_user_allocation(self):
         results = list(RecipientResolver({}).enumerate("allocation"))
-        # alloc1: user1, user2; alloc2: user1, user3 → 4 tuples
+        # proj1 has alloc1, proj2 has alloc2
+        # proj1 users: user1 (PI), user2 (User) → 2 tuples with alloc1
+        # proj2 users: user1 (PI), user3 (Manager) → 2 tuples with alloc2
+        # Total: 4 tuples (all ProjectUsers × their project's allocations)
         self.assertEqual(len(results), 4)
         for user, project, allocation in results:
             self.assertIsNotNone(project)
