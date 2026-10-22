@@ -11,8 +11,8 @@ from django.shortcuts import get_object_or_404, redirect
 from django.views import View
 from django.views.generic import DetailView, ListView, TemplateView
 
-from ..models import NotificationCampaign, NotificationLog, SenderConfig
-from .helpers import StaffRequiredMixin
+from ..models import NotificationCampaign, SenderConfig
+from .helpers import StaffRequiredMixin, dispatch_send
 
 logger = logging.getLogger(__name__)
 
