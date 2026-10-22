@@ -140,6 +140,16 @@ class CampaignSender:
         campaign.save(update_fields=["status", "sent_at"])
         campaign.logs.all().delete()
 
+        try:
+            self._send_inner()
+        except Exception as exc:
+            logger.exception("Campaign %s: unhandled error", campaign.pk)
+            self._fail(f"Unexpected error: {exc}")
+
+    def _send_inner(self):
+        """Inner send logic, called by send() with top-level error handling."""
+        campaign = self.campaign
+
         tokens = extract_tokens(campaign.subject, campaign.body)
         variables_by_key = {
             variable.key: variable

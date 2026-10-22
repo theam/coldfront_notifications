@@ -1,4 +1,4 @@
-"""Campaign views: list, detail, progress polling, resend, resend-compose."""
+"""Campaign views: list, detail, progress polling, resend-compose."""
 from __future__ import annotations
 
 import json
@@ -12,7 +12,7 @@ from django.views import View
 from django.views.generic import DetailView, ListView, TemplateView
 
 from ..models import NotificationCampaign, NotificationLog, SenderConfig
-from .helpers import StaffRequiredMixin, dispatch_send
+from .helpers import StaffRequiredMixin
 
 logger = logging.getLogger(__name__)
 
@@ -65,55 +65,34 @@ class CampaignProgressView(StaffRequiredMixin, View):
         })
 
 
-class ResendFailedView(StaffRequiredMixin, View):
-    """Re-queue failed recipients for an existing campaign."""
-
-    def post(self, request, *args: Any, **kwargs: Any):
-        campaign = get_object_or_404(NotificationCampaign, pk=kwargs["pk"])
-        failed_emails = list(
-            campaign.logs
-            .filter(status=NotificationLog.Status.FAILED)
-            .values_list("email", flat=True)
-        )
-
-        if not failed_emails:
-            messages.info(request, "No failed recipients to resend.")
-            return redirect("notifications:campaign-detail", pk=campaign.pk)
-
-        campaign.logs.filter(
-            status=NotificationLog.Status.FAILED,
-        ).update(status=NotificationLog.Status.QUEUED)
-        campaign.status = NotificationCampaign.Status.QUEUED
-        campaign.save(update_fields=["status"])
-
-        dispatch_send(campaign.pk)
-        messages.info(request, "Resend queued \u2014 delivery in progress.")
-        return redirect("notifications:campaign-detail", pk=campaign.pk)
-
-
 class DraftDeleteView(StaffRequiredMixin, TemplateView):
-    """Confirm and hard-delete a draft campaign."""
+    """Confirm and hard-delete a draft or stuck-sending campaign."""
+
+    DELETABLE_STATUSES = (
+        NotificationCampaign.Status.DRAFT,
+        NotificationCampaign.Status.SENDING,
+    )
 
     template_name = "coldfront_notifications/draft_delete_confirm.html"
 
+    def _get_campaign(self, pk):
+        return get_object_or_404(
+            NotificationCampaign,
+            pk=pk,
+            status__in=self.DELETABLE_STATUSES,
+        )
+
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        context["campaign"] = get_object_or_404(
-            NotificationCampaign,
-            pk=kwargs["pk"],
-            status=NotificationCampaign.Status.DRAFT,
-        )
+        context["campaign"] = self._get_campaign(kwargs["pk"])
         return context
 
     def post(self, request, *args: Any, **kwargs: Any):
-        campaign = get_object_or_404(
-            NotificationCampaign,
-            pk=kwargs["pk"],
-            status=NotificationCampaign.Status.DRAFT,
-        )
-        subject = campaign.subject[:50] or "(no subject)"
+        campaign = self._get_campaign(kwargs["pk"])
+        status = campaign.get_status_display()
+        subject = campaign.subject or "(no subject)"
         campaign.delete()
-        messages.success(request, f'Draft "{subject}" deleted.')
+        messages.success(request, f'{status} Campaign "{subject}" Deleted.')
         return redirect("notifications:campaign-list")
 
 

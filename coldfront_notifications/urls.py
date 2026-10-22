@@ -35,11 +35,6 @@ urlpatterns = [
         name="draft-delete",
     ),
     path(
-        "campaigns/<int:pk>/resend/",
-        views.ResendFailedView.as_view(),
-        name="resend",
-    ),
-    path(
         "campaigns/<int:pk>/resend-compose/",
         views.ResendComposeView.as_view(),
         name="resend-compose",
