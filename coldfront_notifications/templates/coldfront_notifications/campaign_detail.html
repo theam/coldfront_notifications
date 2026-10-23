@@ -18,15 +18,6 @@
         <a href="{% url 'notifications:resend-compose' campaign.pk %}" class="btn btn-outline-primary btn-sm">
           <i class="fas fa-clone mr-1"></i>Resend
         </a>
-        {% if campaign.failed_count %}
-        <form method="post" action="{% url 'notifications:resend' campaign.pk %}" class="d-inline">
-          {% csrf_token %}
-          <button type="submit" class="btn btn-warning btn-sm ml-1"
-                  onclick="return confirm('Resend to {{ campaign.failed_count }} failed recipients?')">
-            <i class="fas fa-redo mr-1"></i>Resend Failed
-          </button>
-        </form>
-        {% endif %}
         {% endif %}
       </div>
     </div>
@@ -56,6 +47,13 @@
         </div>
       </div>
     </div>
+
+    {% if campaign.status == 'failed' and campaign.delivered_count == 0 %}
+    <div class="alert alert-danger" style="font-size:.85rem;">
+      <i class="fas fa-exclamation-triangle mr-1"></i>
+      <strong>SMTP failure detected</strong>, cancelling campaign delivery process.
+    </div>
+    {% endif %}
 
     <div class="card mb-3">
       <div class="card-header"><h3 class="h5 mb-0">Per-Recipient Log</h3></div>

@@ -1,18 +1,26 @@
 {% extends "coldfront_notifications/_delete_confirm_base.html" %}
 
-{% block delete_title %}Delete Draft{% endblock %}
-{% block delete_heading %}Delete Draft{% endblock %}
+{% block delete_title %}Delete {{ campaign.get_status_display }} Campaign{% endblock %}
+{% block delete_heading %}Delete {{ campaign.get_status_display }} Campaign{% endblock %}
 
 {% block confirm_message %}
+{% if campaign.status == 'sending' %}
+<p>Are you sure you want to delete this stuck campaign?</p>
+{% else %}
 <p>Are you sure you want to delete this draft notification?</p>
+{% endif %}
 {% endblock %}
 
 {% block details_rows %}
 <tr><td style="width:80px;" class="font-weight-bold text-muted">Subject</td><td>{{ campaign.subject|default:"(no subject)" }}</td></tr>
+<tr><td class="font-weight-bold text-muted">Status</td><td>{{ campaign.get_status_display }}</td></tr>
 {% if campaign.template %}
 <tr><td class="font-weight-bold text-muted">Template</td><td><code>{{ campaign.template.slug }}</code></td></tr>
 {% endif %}
 <tr><td class="font-weight-bold text-muted">Created</td><td>{{ campaign.created_at|date:"Y-m-d H:i" }}</td></tr>
+{% if campaign.sent_at %}
+<tr><td class="font-weight-bold text-muted">Sent At</td><td>{{ campaign.sent_at|date:"Y-m-d H:i" }}</td></tr>
+{% endif %}
 {% if campaign.filter_summary %}
 <tr><td class="font-weight-bold text-muted">Filters</td><td>
   {% for badge in campaign.filter_summary %}
@@ -22,11 +30,27 @@
 {% endif %}
 {% endblock %}
 
+{% block warning %}
+{% if campaign.status == 'sending' %}
+<div class="alert alert-warning py-2" style="font-size:.82rem;">
+  <i class="fas fa-exclamation-triangle mr-1"></i>
+  This campaign is stuck in "Sending" status, likely due to an SMTP server issue.
+  Any delivery logs will also be deleted.
+</div>
+{% endif %}
+{% endblock %}
+
 {% block explanation %}
+{% if campaign.status == 'draft' %}
 <p class="text-muted" style="font-size:.82rem;">
   This draft has never been sent. Deleting it is permanent and cannot be undone.
 </p>
+{% else %}
+<p class="text-muted" style="font-size:.82rem;">
+  Deleting this campaign is permanent and cannot be undone.
+</p>
+{% endif %}
 {% endblock %}
 
 {% block cancel_url %}{% url 'notifications:campaign-list' %}{% endblock %}
-{% block delete_button_label %}Delete Draft{% endblock %}
+{% block delete_button_label %}Delete Campaign{% endblock %}

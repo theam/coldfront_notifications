@@ -51,6 +51,8 @@
           {% if c.status == 'draft' %}
           <a href="{% url 'notifications:compose' %}?draft={{ c.pk }}" class="btn btn-link btn-sm p-0 mr-2" title="Edit"><i class="fas fa-edit"></i></a>
           <a href="{% url 'notifications:draft-delete' c.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete"><i class="fas fa-trash"></i></a>
+          {% elif c.status == 'sending' %}
+          <a href="{% url 'notifications:draft-delete' c.pk %}" class="btn btn-link btn-sm text-danger p-0" title="Delete stuck campaign"><i class="fas fa-trash"></i></a>
           {% endif %}
         </td>
       </tr>

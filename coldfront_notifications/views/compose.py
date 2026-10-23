@@ -339,14 +339,23 @@ class RecipientCountView(StaffRequiredMixin, View):
         scope = self._determine_preview_scope(filters, subject, body)
         resolver = RecipientResolver(filters)
 
+        dedupe_users = _parse_json(
+            request.POST.get("dedupe_users", ""), [],
+        ) or []
+        dedupe_selections = _parse_json(
+            request.POST.get("dedupe_selections", ""), {},
+        ) or {}
+
         user_info, emails_per_user, total_count = self._collect_user_stats(
             resolver, scope, search_query,
+            dedupe_users, dedupe_selections,
         )
         total_pages = max(1, (total_count + page_size - 1) // page_size)
         page = min(page, total_pages)
 
         page_rows = self._collect_page_rows(
             resolver, scope, page, page_size, search_query,
+            dedupe_users, dedupe_selections,
         )
         self._enrich_with_roles(page_rows)
         multi_email_users = self._build_multi_email_list(emails_per_user, user_info)
@@ -393,12 +402,16 @@ class RecipientCountView(StaffRequiredMixin, View):
         return any(query in field for field in fields)
 
     @staticmethod
-    def _collect_user_stats(resolver, scope, search_query="") -> tuple[dict, Counter, int]:
+    def _collect_user_stats(resolver, scope, search_query="",
+                            dedupe_users=None,
+                            dedupe_selections=None) -> tuple[dict, Counter, int]:
         user_info = {}
         emails_per_user = Counter()
         total_count = 0
 
-        for user, project, allocation in resolver.enumerate(scope):
+        for user, project, allocation in resolver.enumerate_deduped(
+            scope, dedupe_users, dedupe_selections=dedupe_selections,
+        ):
             if not RecipientCountView._row_matches_search(
                 user, project, allocation, search_query,
             ):
@@ -417,13 +430,17 @@ class RecipientCountView(StaffRequiredMixin, View):
 
     @staticmethod
     def _collect_page_rows(resolver, scope, page, page_size,
-                           search_query="") -> list[dict]:
+                           search_query="",
+                           dedupe_users=None,
+                           dedupe_selections=None) -> list[dict]:
         start_index = (page - 1) * page_size
         end_index = start_index + page_size
         page_rows = []
         matched = 0
 
-        for user, project, allocation in resolver.enumerate(scope):
+        for user, project, allocation in resolver.enumerate_deduped(
+            scope, dedupe_users, dedupe_selections=dedupe_selections,
+        ):
             if not RecipientCountView._row_matches_search(
                 user, project, allocation, search_query,
             ):
