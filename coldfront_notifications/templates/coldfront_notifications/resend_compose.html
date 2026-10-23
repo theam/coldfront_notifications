@@ -183,6 +183,8 @@ var URLS = {
   // ── Filters from the original campaign snapshot ──────────────────
   function snapshotFilters() { return SNAPSHOT; }
   function snapshotFilterList(key) { return (SNAPSHOT[key] || []); }
+  function snapshotDedupeUsers() { return JSON.stringify(SNAPSHOT.dedupe_users || []); }
+  function snapshotDedupeSelections() { return JSON.stringify(SNAPSHOT.dedupe_selections || {}); }
 
   // ── Validate ─────────────────────────────────────────────────────
   $(document).on('click', '#recalcBtn', function() {
@@ -197,7 +199,8 @@ var URLS = {
         body: getBodyContent() || '',
         filters: JSON.stringify(snapshotFilters()),
         extra_context: JSON.stringify({}),
-        dedupe_users: JSON.stringify([]),
+        dedupe_users: snapshotDedupeUsers(),
+        dedupe_selections: snapshotDedupeSelections(),
       },
       success: function(data) {
         var errs = data.errors || [];
@@ -282,7 +285,8 @@ var URLS = {
         subject: $('#id_subject').val() || '',
         body: getBodyContent() || '',
         filters: JSON.stringify(snapshotFilters()),
-        dedupe_users: JSON.stringify([]),
+        dedupe_users: snapshotDedupeUsers(),
+        dedupe_selections: snapshotDedupeSelections(),
       },
       success: function(data) {
         PREVIEW_SAMPLES = data.samples || [];
@@ -352,7 +356,8 @@ var URLS = {
       csrfmiddlewaretoken: csrfToken,
       subject: $('#id_subject').val() || '',
       body: getBodyContent() || '',
-      dedupe_users: JSON.stringify([]),
+      dedupe_users: snapshotDedupeUsers(),
+      dedupe_selections: snapshotDedupeSelections(),
       preview: 'true',
       page: PREVIEW_PAGE,
       page_size: getPageSize(),
