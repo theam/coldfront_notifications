@@ -40,6 +40,11 @@ urlpatterns = [
         name="resend-compose",
     ),
     path(
+        "campaigns/<int:pk>/resend-preview/",
+        views.ResendPreviewView.as_view(),
+        name="resend-preview",
+    ),
+    path(
         "campaigns/<int:pk>/progress/",
         views.CampaignProgressView.as_view(),
         name="campaign-progress",

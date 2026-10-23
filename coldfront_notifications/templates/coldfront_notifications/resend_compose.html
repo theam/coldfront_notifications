@@ -173,6 +173,7 @@ var SNAPSHOT = {{ snapshot_json|safe }};
 var URLS = {
   previewRender:  '{% url "notifications:api-preview-render" %}',
   recipientCount: '{% url "notifications:api-recipient-count" %}',
+  resendPreview:  '{% url "notifications:resend-preview" source.pk %}',
   validate:       '{% url "notifications:api-validate" %}'
 };
 </script>
@@ -348,37 +349,16 @@ var URLS = {
 
   function fetchPreviewPage(page) {
     PREVIEW_PAGE = page || 1;
-    $('#recipSearch').val('');
     $('#recipRows').html('<tr><td colspan="5" class="text-center text-muted py-3"><i class="fas fa-spinner fa-spin mr-1"></i>Loading...</td></tr>');
 
-    var mode = SNAPSHOT.selection_mode || 'filters';
-    var postData = {
-      csrfmiddlewaretoken: csrfToken,
-      subject: $('#id_subject').val() || '',
-      body: getBodyContent() || '',
-      dedupe_users: snapshotDedupeUsers(),
-      dedupe_selections: snapshotDedupeSelections(),
-      preview: 'true',
-      page: PREVIEW_PAGE,
-      page_size: getPageSize(),
-      selection_mode: mode,
-    };
-
-    if (mode === 'direct') {
-      postData.direct_user_pks = JSON.stringify(SNAPSHOT.direct_user_pks || []);
-    } else {
-      postData.projects = snapshotFilterList('projects');
-      postData.allocations = snapshotFilterList('allocations');
-      postData.departments = snapshotFilterList('departments');
-      postData.resources = snapshotFilterList('resources');
-      postData.alloc_status = snapshotFilterList('statuses');
-      postData.roles = snapshotFilterList('roles');
-    }
-
     $.ajax({
-      url: URLS.recipientCount, type: 'POST',
-      data: postData,
-      traditional: true,
+      url: URLS.resendPreview, type: 'POST',
+      data: {
+        csrfmiddlewaretoken: csrfToken,
+        page: PREVIEW_PAGE,
+        page_size: getPageSize(),
+        search: ($('#recipSearch').val() || '').trim(),
+      },
       success: function(data) {
         PREVIEW_ROWS = data.recipients || [];
         PREVIEW_SCOPE = data.scope || null;
@@ -400,9 +380,10 @@ var URLS = {
   $(document).on('click', '#recipLastBtn', function() { if (PREVIEW_PAGE < PREVIEW_TOTAL_PAGES) fetchPreviewPage(PREVIEW_TOTAL_PAGES); });
   $(document).on('change', '#recipPageSize', function() { fetchPreviewPage(1); });
 
+  var _searchTimer = null;
   $(document).on('input', '#recipSearch', function() {
-    var q = $(this).val().toLowerCase();
-    $('#recipRows tr').each(function() { $(this).toggle(!q || $(this).text().toLowerCase().indexOf(q) !== -1); });
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(function() { fetchPreviewPage(1); }, 300);
   });
 
 })();
