@@ -140,13 +140,12 @@
     </div>
 
     <div class="card mb-3">
-      <div class="card-header"><h5 class="h6 mb-0">Filters (from original)</h5></div>
+      <div class="card-header"><h5 class="h6 mb-0">Original Recipients</h5></div>
       <div class="card-body" style="word-break:break-word;">
-        {% for f in source.filter_summary %}
-          <span class="badge badge-light border text-dark mb-1" style="font-size:.75rem;">{{ f }}</span>
-        {% empty %}
-          <em class="text-muted" style="font-size:.82rem;">None -- all users matched</em>
-        {% endfor %}
+        <span class="badge badge-light border text-dark mb-1" style="font-size:.75rem;">
+          {{ source.recipient_count }} recipient{{ source.recipient_count|pluralize }}
+          ({{ source.delivered_count }} delivered, {{ source.failed_count }} failed)
+        </span>
       </div>
     </div>
 
